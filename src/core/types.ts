@@ -1,0 +1,318 @@
+/**
+ * ACP (Agent Client Protocol) Core Types
+ * Based on ACP Specification v1 - https://agentclientprotocol.com
+ */
+
+// ── JSON-RPC Base ──
+
+export interface JsonRpcRequest<T = unknown> {
+  jsonrpc: "2.0";
+  id: number;
+  method: string;
+  params: T;
+}
+
+export interface JsonRpcResponse<T = unknown> {
+  jsonrpc: "2.0";
+  id: number;
+  result?: T;
+  error?: JsonRpcError;
+}
+
+export interface JsonRpcNotification<T = unknown> {
+  jsonrpc: "2.0";
+  method: string;
+  params: T;
+}
+
+export interface JsonRpcError {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+
+// ── Initialize ──
+
+export interface ClientCapabilities {
+  fs?: {
+    readTextFile?: boolean;
+    writeTextFile?: boolean;
+    listDirectory?: boolean;
+  };
+  terminal?: boolean;
+  /** Custom or experimental client-provided capabilities */
+  experimental?: Record<string, any>;
+  [key: string]: any;
+}
+
+export interface InitializeRequest {
+  protocolVersion: number;
+  clientCapabilities: ClientCapabilities;
+  clientInfo?: {
+    name: string;
+    version: string;
+  };
+}
+
+export interface AgentCapabilities {
+  loadSession?: boolean;
+  promptCapabilities?: {
+    image?: boolean;
+    audio?: boolean;
+    embeddedContext?: boolean;
+  };
+  mcpCapabilities?: {
+    http?: boolean;
+    sse?: boolean;
+  };
+  sessionCapabilities?: {
+    close?: Record<string, never>;
+    resume?: Record<string, never>;
+    modes?: Record<string, never>;
+    commands?: Record<string, never>;
+  };
+}
+
+export interface InitializeResponse {
+  protocolVersion: number;
+  agentCapabilities: AgentCapabilities;
+  agentInfo?: {
+    name: string;
+    version: string;
+  };
+  authMethods?: AuthMethod[];
+}
+
+// ── Auth ──
+
+export interface AuthMethod {
+  id: string;
+  name: string;
+  description?: string | null;
+  _meta?: Record<string, unknown>;
+}
+
+export interface AuthenticateRequest {
+  methodId: string;
+  authMethod: {
+    id: string;
+    name: string;
+    description: string;
+  };
+}
+
+// ── Session ──
+
+export interface SessionNewRequest {
+  cwd: string;
+  mcpServers?: McpServerConfig[];
+}
+
+export interface SessionNewResponse {
+  sessionId: string;
+}
+
+export interface SessionPromptRequest {
+  sessionId: string;
+  prompt: ContentBlock[];
+}
+
+export interface PromptResponse {
+  stopReason: "end_turn" | "max_tokens" | "tool_use" | "cancelled" | "error" | string;
+}
+
+export interface McpServerConfig {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+// ── Content Blocks ──
+
+export interface TextContent {
+  type: "text";
+  text: string;
+}
+
+export interface ImageContent {
+  type: "image";
+  source: {
+    type: "base64";
+    mediaType: string;
+    data: string;
+  };
+}
+
+export type ContentBlock = TextContent | ImageContent;
+
+// ── Session Update (session/update notification) ──
+
+export interface SessionNotification {
+  sessionId: string;
+  update: SessionUpdate;
+  _meta?: Record<string, unknown>;
+}
+
+export type SessionUpdate =
+  | UserMessageChunkUpdate
+  | AgentMessageChunkUpdate
+  | AgentThoughtChunkUpdate
+  | ToolCallUpdate
+  | ToolCallUpdateUpdate
+  | PlanUpdate
+  | AvailableCommandsUpdate
+  | CurrentModeUpdate
+  | ConfigOptionUpdate
+  | SessionInfoUpdate;
+
+export interface UserMessageChunkUpdate {
+  sessionUpdate: "user_message_chunk";
+  content: ContentBlock;
+}
+
+export interface AgentMessageChunkUpdate {
+  sessionUpdate: "agent_message_chunk";
+  content: ContentBlock;
+}
+
+export interface AgentThoughtChunkUpdate {
+  sessionUpdate: "agent_thought_chunk";
+  content: ContentBlock;
+}
+
+export interface ToolCallUpdate {
+  sessionUpdate: "tool_call";
+  toolCallId: string;
+  title: string;
+  kind: string;
+  status: "pending" | "in_progress";
+  rawInput?: unknown;
+  locations?: FileLocation[];
+}
+
+export interface ToolCallUpdateUpdate {
+  sessionUpdate: "tool_call_update";
+  toolCallId: string;
+  status: "completed" | "failed" | "in_progress";
+  content?: ToolContent[];
+  rawOutput?: unknown;
+}
+
+export interface FileLocation {
+  path: string;
+  line?: number;
+}
+
+export type ToolContent =
+  | { type: "text"; text: string }
+  | { type: "diff"; path: string; oldText: string; newText: string }
+  | { type: "terminal"; command: string; output: string };
+
+export interface PlanUpdate {
+  sessionUpdate: "plan";
+  entries: PlanEntry[];
+}
+
+export interface PlanEntry {
+  id: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  priority?: number;
+}
+
+export interface AvailableCommandsUpdate {
+  sessionUpdate: "available_commands_update";
+  availableCommands: Array<{
+    name: string;
+    description?: string;
+  }>;
+}
+
+export interface CurrentModeUpdate {
+  sessionUpdate: "current_mode_update";
+  currentModeId: string;
+}
+
+export interface ConfigOptionUpdate {
+  sessionUpdate: "config_option_update";
+  configOptions: Array<{
+    id: string;
+    value: unknown;
+  }>;
+}
+
+export interface SessionInfoUpdate {
+  sessionUpdate: "session_info_update";
+  title?: string;
+  updatedAt?: string;
+}
+
+// ── Permission ──
+
+export interface PermissionRequest {
+  requestId: string;
+  title: string;
+  message: string;
+  options: Array<{
+    optionId: string;
+    label: string;
+  }>;
+}
+
+export interface PermissionResponse {
+  outcome: { type: "selected" };
+  optionId: string;
+}
+
+// ── Client Methods (Agent calls these on Client) ──
+
+export interface FileReadRequest {
+  path: string;
+}
+
+export interface FileWriteRequest {
+  path: string;
+  content: string;
+}
+
+export interface TerminalCreateRequest {
+  command: string;
+  cwd?: string;
+}
+
+// ── Agent Registry Types ──
+
+export type AuthStrategy = "none" | "env-auto" | "pre-configured" | "interactive";
+
+export interface AgentDefinition {
+  id: string;
+  name: string;
+  description: string;
+  command: string;
+  args: string[];
+  env: Record<string, string | undefined>;
+  authStrategy: AuthStrategy;
+  authEnvVars?: string[];
+  optionalCapabilities?: {
+    sessionClose?: boolean;
+    sessionLoad?: boolean;
+  };
+  /** Hint shown when the agent binary is not found in PATH */
+  installHint?: string;
+}
+
+// ── Runtime Capabilities ──
+
+export interface RuntimeCapabilities {
+  sessionClose: boolean;
+  sessionLoad: boolean;
+  permissionRequests: boolean;
+  mcpHttp: boolean;
+  mcpSse: boolean;
+  imageInput: boolean;
+  audioInput: boolean;
+  embeddedContext: boolean;
+  modes: boolean;
+  commands: boolean;
+}

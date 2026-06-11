@@ -1,0 +1,6 @@
+methods:
+  - name: "custom/greet"
+    description: "Greet a user with a specific message"
+    params:
+      name: "string"
+      style: "string"
