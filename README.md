@@ -208,9 +208,3 @@ tests/
 
 - **Process Hangs**: Ensure you call `client.shutdown()` to clean up event loops and terminate child processes.
 - **Sandbox Access Denied**: The filesystem handler enforces a strict sandbox. Ensure agents are accessing paths relative to the current working directory.
-
----
-
-## License
-
-MIT
