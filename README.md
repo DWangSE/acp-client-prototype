@@ -4,7 +4,7 @@
 [![ZH](https://img.shields.io/badge/Language-中文-red.svg)](README.zh.md)
 
 
-# Universal ACP Client (V3 Refactored)
+# Universal ACP Client
 
 A modular and extensible ACP (Agent Client Protocol) client library designed to connect standard AI coding agents (Gemini, Claude, Codex) and TUI-based tools (Aider) to upper-layer systems.
 
@@ -12,9 +12,9 @@ Powered by `@agentclientprotocol/sdk`.
 
 ---
 
-## Core Refactoring Highlights
+## Key Capabilities & Features
 
-- **Builder Pattern**: Instantiate and configure client client instances via a clean, chainable Builder.
+- **Builder Pattern**: Instantiate and configure client instances via a clean, chainable Builder (`AcpClientBuilder`).
 - **State Machine Integration**: Expose fine-grained state queries (`disconnected`, `initializing`, `authenticated`, `ready`, `busy`, `shutting_down`) and state change events.
 - **Config-Driven Extensibility**: Define custom client capabilities in plain `YAML` or `JSON` and register extension method handlers effortlessly.
 - **Isolated Test Layer**: Standardised Hello World testing is separated into its own package/layer to allow building the library and tests independently.
@@ -65,7 +65,7 @@ const client = builder.build();
 
 ### 2. Client States & Events
 
-The client client exposes standard execution states and functions as a unified I/O channel for upper-layer orchestrators.
+The client exposes standard execution states and functions as a unified I/O channel for upper-layer orchestrators.
 
 #### Connection & Turn States (`ClientState`)
 
@@ -184,11 +184,27 @@ src/
 ├── client-methods/   # Standard (FS, Terminal, Session) & Custom Extensions
 ├── connection/       # Protocol drivers (JSON-RPC / PTY abstraction)
 ├── core/             # Errors, shared types, ACP schemas
-├── hook-gate/        # Extensible lifecycle hooks and gate interceptors
+├── driver/           # Direction A Driver Wrapper layer (MockDriver)
+├── hook-gate/        # Event schemas & interceptor callbacks (Decoupled)
 └── session/          # Session cache & store
 tests/
+├── driver.test.ts    # Direction A Driver contract integration tests
 └── hello.ts          # Separated testing layer
 ```
+
+---
+
+### 4. Direction A Driver Contract Wrapper (`src/driver/`)
+
+To support end-to-end multi-agent BCD pipelines, the micro-level `AcpClient` is wrapped inside the `MockDriver` adapter which implements `DriverRuntimeHandle` (from Direction C contract):
+- **`sendPrompt(input: DriverPrompt): Promise<DriverRunResult>`**: High-level execution envelope returning structured patch artifacts and audit logs compatible with SQLite states.
+
+To run the standalone driver test suite:
+```bash
+npm run build && npm run build:test && node dist/tests/driver.test.js
+```
+
+---
 
 ---
 

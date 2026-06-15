@@ -1,12 +1,12 @@
-# ACP Client Prototype — API 文档 (V3)
+# ACP Client Prototype — API 文档
 
-> 本文档面向开发者，系统介绍 `acp-client-prototype` 项目的 V3 重构后的模块架构、核心类、类型定义及使用方法。
+> 本文档面向开发者，系统介绍 `acp-client-prototype` 项目的模块架构、核心类、类型定义及使用方法。
 
 ---
 
 ## 目录
 
-- [ACP Client Prototype — API 文档 (V3)](#acp-client-prototype--api-文档-v3)
+- [ACP Client Prototype — API 文档](#acp-client-prototype--api-文档)
   - [目录](#目录)
   - [1. 项目架构概览](#1-项目架构概览)
   - [2. 连接层 (`src/connection/`)](#2-连接层-srcconnection)
@@ -15,9 +15,7 @@
     - [`AgentAdapter`](#agentadapter)
   - [4. 认证层 (`src/auth/`)](#4-认证层-srcauth)
     - [`AuthLayer`](#authlayer)
-  - [5. Hook \& Gate 系统 (`src/hook-gate/`)](#5-hook--gate-系统-srchook-gate)
-    - [钩子 (Hooks)](#钩子-hooks)
-    - [拦截器 (Gates)](#拦截器-gates)
+  - [5. 事件与拦截器契约 (`src/hook-gate/`)](#5-事件与拦截器契约-srchook-gate)
   - [6. 客户端方法 (`src/client-methods/`)](#6-客户端方法-srcclient-methods)
   - [7. 核心客户端 (`src/client/acp-client.ts`)](#7-核心客户端-srcclientacp-clientts)
   - [8. 类型定义与错误处理](#8-类型定义与错误处理)
@@ -27,7 +25,7 @@
 
 ## 1. 项目架构概览
 
-重构后的架构采用了高度模块化的设计，引入了连接抽象、适配器模式以及生命周期钩子系统。
+本项目的架构采用了模块化的设计，引入了连接抽象、适配器模式以及生命周期钩子系统。
 
 ```
 src/
@@ -54,10 +52,8 @@ src/
 ├── core/                     ← 核心基础
 │   ├── errors.ts             ← 统一错误定义
 │   └── types.ts              ← 协议与扩展类型
-├── hook-gate/                ← 扩展系统
-│   ├── built-in/             ← 内置钩子与拦截点
-│   ├── registry.ts           ← 钩子/拦截器注册表
-│   └── interface.ts          ← 接口定义
+├── hook-gate/                ← 契约层
+│   └── interface.ts          ← 事件名称与拦截器回调接口定义
 ├── session/                  ← 会话管理
 │   ├── memory-session-store.ts
 │   └── interface.ts
@@ -97,15 +93,18 @@ src/
 
 ---
 
-## 5. Hook & Gate 系统 (`src/hook-gate/`)
+## 5. 事件与拦截器契约 (`src/hook-gate/`)
 
-### 钩子 (Hooks)
-生命周期事件的监听点。
-- 点位：`pre:connect`, `post:initialize`, `pre:prompt`, `pre:disconnect` 等。
+在 Direction A 运行时设计中，Client/Driver 不负责任何策略逻辑和注册表。它扮演纯粹的事件源，并提供一级同步拦截回调。
 
-### 拦截器 (Gates)
-数据流的控制点，可以修改或拦截数据。
-- 点位：`output` (控制事件输出), `request:outbound`, `permission` 等。
+### 事件发布 (Event Publication)
+`AcpClient` 继承自 Node 的 `EventEmitter`，在特定的物理生命周期时点派发只读事件，外部可采用非阻塞方式订阅：
+- **生命周期时点**：`pre:connect`、`post:initialize`、`pre:prompt`、`post:session:create` 等。
+
+### 拦截器 (Interceptors)
+拦截器采用 **Unary Callback** 一级回调机制，由外部传入函数实现同步的数据篡改过滤或阻断判断，而不由 Client 内部运行拦截器优先级聚合决策：
+- **`output`**: 拦截并修改输出流报文（ConnectionEvent），可返回 `null` 执行丢弃。
+- **`permission`**: 拦截工具/敏感指令执行（PermissionRequest），同步返回 `boolean` 以表示授权通过与否。
 
 ---
 
@@ -130,8 +129,21 @@ const client = new AcpClient({
   authLayer,
   sessionManager,
   methodRouter,
-  hookRegistry,
-  gateRegistry
+  interceptors: {
+    output: async (event) => {
+      // 外部自定义同步数据过滤/篡改
+      return event;
+    },
+    permission: async (request) => {
+      // 外部同步安全拦截与阻断判定
+      return true;
+    }
+  }
+});
+
+// 外部事件监听
+client.on("pre:connect", (payload) => {
+  // 订阅生命周期事件，抛给上层协调控制面
 });
 
 await client.initialize();
@@ -156,4 +168,12 @@ for await (const event of turn) {
 
 ---
 
-> 本文档与代码同步版本：v3.0.0 | 最后更新：2026-06-03
+## 9. Driver 包装层 (`src/driver/`)
+
+由于 `AcpClient` 处于微观协议通道级别，在面向长程协调层（Direction C / Coordinator）时，项目要求以执行闭环的形式交付结果。因此我们在 `src/driver/` 下设计了 **Driver 包装层**：
+
+- **`DriverRuntimeHandle` 接口**：定义了宏观的任务执行入口，包括 `sendPrompt(input: DriverPrompt): Promise<DriverRunResult>`，完全对齐长程协调的契约。
+- **`MockDriver` 实现**：作为 Mock 包装实现，完全实现了该接口。能够根据 Prompt 模拟 succeeded/failed 状态的执行，并在结果中正确携带补丁产物引用（`ArtifactRef`）与审计日志引用。
+
+---
+

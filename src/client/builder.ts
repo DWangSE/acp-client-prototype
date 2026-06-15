@@ -5,7 +5,7 @@ import { PtyConnection } from "../connection/pty-connection.js";
 import { AuthLayer } from "../auth/auth-layer.js";
 import { MemorySessionStore } from "../session/memory-session-store.js";
 import { ClientMethodRouter } from "../client-methods/router.js";
-import { HookRegistry, GateRegistry } from "../hook-gate/registry.js";
+import { ClientInterceptors } from "../hook-gate/interface.js";
 import { FileSystemHandler } from "../client-methods/filesystem-handler.js";
 import { PermissionHandler } from "../client-methods/permission-handler.js";
 import { TerminalHandler } from "../client-methods/terminal-handler.js";
@@ -19,6 +19,7 @@ export class AcpClientBuilder {
   private handlers: Record<string, ClientMethodHandler> = {};
   private autoApprove: boolean = false;
   private sandboxDir: string = process.cwd();
+  private interceptors?: ClientInterceptors;
 
   withAgent(agentId: string): this {
     this.agentId = agentId;
@@ -50,6 +51,11 @@ export class AcpClientBuilder {
     return this;
   }
 
+  withInterceptors(interceptors: ClientInterceptors): this {
+    this.interceptors = interceptors;
+    return this;
+  }
+
   build(): AcpClient {
     if (!this.agentId) {
       throw new Error("Agent ID must be specified using 'withAgent()'");
@@ -63,8 +69,6 @@ export class AcpClientBuilder {
     const connection = adapter.connectionType === "acp" ? new AcpConnection() : new PtyConnection();
     const authLayer = new AuthLayer();
     const sessionManager = new MemorySessionStore();
-    const hookRegistry = new HookRegistry();
-    const gateRegistry = new GateRegistry();
     const methodRouter = new ClientMethodRouter();
 
     // Register default handlers
@@ -102,8 +106,7 @@ export class AcpClientBuilder {
       authLayer,
       sessionManager,
       methodRouter,
-      hookRegistry,
-      gateRegistry,
+      interceptors: this.interceptors,
       verbose: this.verbose,
       experimentalCapabilities,
     };

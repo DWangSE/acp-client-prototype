@@ -9,4 +9,9 @@ export { ClientMethodHandler } from "./client-methods/interface.js";
 export { FileSystemHandler } from "./client-methods/filesystem-handler.js";
 export { PermissionHandler } from "./client-methods/permission-handler.js";
 export { TerminalHandler } from "./client-methods/terminal-handler.js";
-export { HookRegistry, GateRegistry } from "./hook-gate/registry.js";
+export * from "./hook-gate/interface.js";
+
+// Driver exports
+export * from "./driver/interface.js";
+export { MockDriver } from "./driver/mock-driver.js";
+

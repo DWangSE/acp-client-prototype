@@ -12,12 +12,12 @@
 
 ---
 
-## 核心重构特性 (V3)
+## 核心设计特性
 
-- **Builder 模式**: 抽象出极其简单易用的 `AcpClientBuilder`，通过链式调用进行 Client 实例的参数化构建。
-- **状态机与生命周期暴露**: 完美暴露 Client 全生命周期状态 (`disconnected`, `initializing`, `authenticated`, `ready`, `busy`, `shutting_down`)，并支持实时状态变更事件。
-- **配置驱动的方法扩展**: 支持通过 `YAML` 或 `JSON` 配置文件定义新增方法描述，并配合 Builder 注册自定义处理器（Handler），极速完成 ACP/MCP 扩展。
-- **完全隔离的测试层**: 将原有的 Hello World 测试从核心业务库剥离到单独的 `tests/` 目录中，支持库与测试的独立编译，测试代码完全使用 Client 暴露的公开 Builder 和接口。
+- **Builder 模式**: 抽象出简单易用的 `AcpClientBuilder`，通过链式调用进行 Client 实例的参数化构建。
+- **状态机与生命周期暴露**: 暴露 Client 全生命周期状态 (`disconnected`, `initializing`, `authenticated`, `ready`, `busy`, `shutting_down`)，并支持实时状态变更事件。
+- **配置驱动的方法扩展**: 支持通过 `YAML` 或 `JSON` 配置文件定义新增方法描述，并配合 Builder 注册自定义处理器（Handler），快速完成 ACP/MCP 扩展。
+- **完全隔离的测试层**: 测试代码与核心库分离，位于独立的 `tests/` 目录中，支持独立编译，且测试代码完全使用 Client 暴露的公开 Builder 和接口。
 
 ---
 
@@ -95,7 +95,7 @@ const client = builder.build();
 | `permission_request` | `(payload: any)` | Agent 请求高风险操作（如运行终端脚本）时触发的交互式授权。 |
 
 ```typescript
-// 享受无缝拼写补全与类型感知
+// 支持拼写补全与类型校验
 client.on("stateChange", (newState, oldState) => {
   // TypeScript 会自动推断出 newState 与 oldState 为 ClientState 类型！
 });
@@ -184,11 +184,27 @@ src/
 ├── client-methods/   # 宿主内置功能 (FS 沙箱、虚拟终端等) 与自定义扩展处理器
 ├── connection/       # 底层连接驱动（ACP JSON-RPC / PTY）
 ├── core/             # 通用错误、类型定义及协议规范定义
-├── hook-gate/        # 生命周期钩子 & 数据流门禁系统
+├── driver/           # A方向 Driver 包装层 (MockDriver)
+├── hook-gate/        # 事件点位定义与拦截回调契约 (解耦)
 └── session/          # 会话存储与管理
 tests/
+├── driver.test.ts    # A方向 Driver 契约集成测试层
 └── hello.ts          # 分离出的独立测试层
 ```
+
+---
+
+### 4. A 方向 Driver 契约包装层 (`src/driver/`)
+
+为了支持端到端多智能体 BCD 流水线，微观协议通道层的 `AcpClient` 被包裹在 `MockDriver` 适配器中，该适配器完全实现了 C 方向要求的 `DriverRuntimeHandle` 接口：
+- **`sendPrompt(input: DriverPrompt): Promise<DriverRunResult>`**：宏观任务执行信封，向 C 方向返回标准的补丁产物引用与审计日志。
+
+执行独立的 A 方向驱动集成测试契约套件：
+```bash
+npm run build && npm run build:test && node dist/tests/driver.test.js
+```
+
+---
 
 ---
 

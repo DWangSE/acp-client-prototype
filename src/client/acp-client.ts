@@ -4,7 +4,7 @@ import { AgentAdapter } from "../adapter/interface.js";
 import { AuthLayer } from "../auth/auth-layer.js";
 import { SessionManager, SessionInfo } from "../session/interface.js";
 import { ClientMethodRouter } from "../client-methods/router.js";
-import { HookRegistry, GateRegistry } from "../hook-gate/registry.js";
+import { ClientInterceptors, HookPoint } from "../hook-gate/interface.js";
 import { AuthError, SessionError } from "../core/errors.js";
 import type { InitializeResult } from "../connection/interface.js";
 import type { ClientCapabilities } from "../core/types.js";
@@ -23,8 +23,7 @@ export interface AcpClientOptions {
   authLayer: AuthLayer;
   sessionManager: SessionManager;
   methodRouter: ClientMethodRouter;
-  hookRegistry: HookRegistry;
-  gateRegistry: GateRegistry;
+  interceptors?: ClientInterceptors;
   verbose?: boolean;
   experimentalCapabilities?: Record<string, any>;
 }
@@ -35,8 +34,7 @@ export class AcpClient extends EventEmitter {
   private authLayer: AuthLayer;
   private sessionManager: SessionManager;
   private methodRouter: ClientMethodRouter;
-  private hookRegistry: HookRegistry;
-  private gateRegistry: GateRegistry;
+  private interceptors?: ClientInterceptors;
   private verbose: boolean;
   private experimentalCapabilities?: Record<string, any>;
 
@@ -55,8 +53,7 @@ export class AcpClient extends EventEmitter {
     this.authLayer = options.authLayer;
     this.sessionManager = options.sessionManager;
     this.methodRouter = options.methodRouter;
-    this.hookRegistry = options.hookRegistry;
-    this.gateRegistry = options.gateRegistry;
+    this.interceptors = options.interceptors;
     this.verbose = options.verbose ?? false;
     this.experimentalCapabilities = options.experimentalCapabilities;
 
@@ -68,6 +65,7 @@ export class AcpClient extends EventEmitter {
   override emit(event: "stateChange", newState: ClientState, oldState: ClientState): boolean;
   override emit(event: "event", connEvent: ConnectionEvent): boolean;
   override emit(event: "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "stderr" | "agentMessage", payload: any): boolean;
+  override emit(event: HookPoint, payload: any): boolean;
   override emit(event: string | symbol, ...args: any[]): boolean {
     return super.emit(event, ...args);
   }
@@ -75,6 +73,7 @@ export class AcpClient extends EventEmitter {
   override on(event: "stateChange", listener: (newState: ClientState, oldState: ClientState) => void): this;
   override on(event: "event", listener: (connEvent: ConnectionEvent) => void): this;
   override on(event: "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "stderr" | "agentMessage", listener: (payload: any) => void): this;
+  override on(event: HookPoint, listener: (payload: any) => void): this;
   override on(event: string | symbol, listener: (...args: any[]) => void): this {
     return super.on(event, listener);
   }
@@ -82,6 +81,7 @@ export class AcpClient extends EventEmitter {
   override once(event: "stateChange", listener: (newState: ClientState, oldState: ClientState) => void): this;
   override once(event: "event", listener: (connEvent: ConnectionEvent) => void): this;
   override once(event: "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "stderr" | "agentMessage", listener: (payload: any) => void): this;
+  override once(event: HookPoint, listener: (payload: any) => void): this;
   override once(event: string | symbol, listener: (...args: any[]) => void): this {
     return super.once(event, listener);
   }
@@ -112,7 +112,7 @@ export class AcpClient extends EventEmitter {
   async initialize(customCapabilities?: Partial<ClientCapabilities>): Promise<InitializeResult> {
     this.setState("initializing");
     const agentId = this.adapter.agentId;
-    await this.hookRegistry.execute("pre:connect", { point: "pre:connect", agentId });
+    this.emit("pre:connect", { point: "pre:connect", agentId });
 
     const spawnOptions = this.adapter.resolveCommand();
     const env = this.adapter.resolveEnv();
@@ -123,8 +123,8 @@ export class AcpClient extends EventEmitter {
       verbose: this.verbose,
     });
 
-    await this.hookRegistry.execute("post:connect", { point: "post:connect", agentId });
-    await this.hookRegistry.execute("pre:initialize", { point: "pre:initialize", agentId });
+    this.emit("post:connect", { point: "post:connect", agentId });
+    this.emit("pre:initialize", { point: "pre:initialize", agentId });
 
     const clientCapabilities: ClientCapabilities = {
       fs: { readTextFile: true, writeTextFile: true, listDirectory: true },
@@ -146,7 +146,7 @@ export class AcpClient extends EventEmitter {
     this.authMethods = result.authMethods || [];
     this.abortController = new AbortController();
 
-    await this.hookRegistry.execute("post:initialize", { point: "post:initialize", agentId, data: result });
+    this.emit("post:initialize", { point: "post:initialize", agentId, data: result });
     
     // Setup event forwarding
     this.setupEventForwarding(this.abortController.signal);
@@ -167,18 +167,16 @@ export class AcpClient extends EventEmitter {
         for await (const event of this.connection.onEvent()) {
           if (signal.aborted) break;
 
-          // Apply output gate
-          const decision = await this.gateRegistry.intercept("output", {
-              point: "output",
-              agentId: this.adapter.agentId,
-              data: event
-          });
-
-          if (decision.action === "block") continue;
-          const finalEvent = decision.action === "modify" ? decision.value : event;
+          // Apply output interceptor callback
+          let finalEvent = event;
+          if (this.interceptors?.output) {
+            const intercepted = await this.interceptors.output(event);
+            if (intercepted === null) continue;
+            finalEvent = intercepted;
+          }
 
           this.emit("event", finalEvent);
-          this.emit(finalEvent.type, finalEvent.payload);
+          this.emit(finalEvent.type as any, finalEvent.payload);
           
           if (finalEvent.type === "agent_message_chunk") this.emit("agentMessage", finalEvent.payload);
           if (finalEvent.type === "stderr") this.emit("stderr", finalEvent.payload);
@@ -194,7 +192,7 @@ export class AcpClient extends EventEmitter {
   async authenticate(): Promise<void> {
     this.ensureInitialized();
     const agentId = this.adapter.agentId;
-    await this.hookRegistry.execute("pre:authenticate", { point: "pre:authenticate", agentId });
+    this.emit("pre:authenticate", { point: "pre:authenticate", agentId });
 
     const strategy = this.adapter.resolveAuthStrategy();
     if (this.verbose) console.log(`[Auth] Using strategy: ${strategy}`);
@@ -211,7 +209,7 @@ export class AcpClient extends EventEmitter {
 
     this.authenticated = true;
     this.setState("authenticated");
-    await this.hookRegistry.execute("post:authenticate", { point: "post:authenticate", agentId });
+    this.emit("post:authenticate", { point: "post:authenticate", agentId });
   }
 
   async createSession(cwd: string): Promise<SessionInfo> {
@@ -219,7 +217,7 @@ export class AcpClient extends EventEmitter {
     if (!this.authenticated) await this.authenticate();
 
     const agentId = this.adapter.agentId;
-    await this.hookRegistry.execute("pre:session:create", { point: "pre:session:create", agentId, data: { cwd } });
+    this.emit("pre:session:create", { point: "pre:session:create", agentId, data: { cwd } });
 
     const sessionRecord = await this.connection.createSession(cwd);
     this.currentSession = {
@@ -228,7 +226,7 @@ export class AcpClient extends EventEmitter {
       agentId,
     };
 
-    await this.hookRegistry.execute("post:session:create", { point: "post:session:create", agentId, data: this.currentSession });
+    this.emit("post:session:create", { point: "post:session:create", agentId, data: this.currentSession });
     this.setState("ready");
     return this.currentSession;
   }
@@ -238,7 +236,7 @@ export class AcpClient extends EventEmitter {
     if (!this.currentSession) throw new SessionError("No active session");
 
     const agentId = this.adapter.agentId;
-    await this.hookRegistry.execute("pre:prompt", { point: "pre:prompt", agentId, data: { message } });
+    this.emit("pre:prompt", { point: "pre:prompt", agentId, data: { message } });
 
     this.setState("busy");
 
@@ -286,9 +284,9 @@ export class AcpClient extends EventEmitter {
     this.setState("shutting_down");
     const agentId = this.adapter.agentId;
     this.abortController?.abort();
-    await this.hookRegistry.execute("pre:disconnect", { point: "pre:disconnect", agentId });
+    this.emit("pre:disconnect", { point: "pre:disconnect", agentId });
     await this.connection.disconnect();
-    await this.hookRegistry.execute("post:disconnect", { point: "post:disconnect", agentId });
+    this.emit("post:disconnect", { point: "post:disconnect", agentId });
     this.initialized = false;
     this.authenticated = false;
     this.currentSession = null;
