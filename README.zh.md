@@ -6,7 +6,7 @@
 
 # Universal ACP Client 
 
-一个模块化、高可扩展的 ACP (Agent Client Protocol) 宿主客户端类库，用于将标准的 AI 编码 Agent (Gemini, Claude, Codex) 以及基于 TUI 的工具 (Aider) 无缝接入您的上层系统（例如 Multi-Agent 编排框架、IDE 插件等）。
+一个模块化、高可扩展的 ACP (Agent Client Protocol) 宿主客户端类库，用于将标准的 AI 编码 Agent (Gemini, Claude, Codex) 以及基于 TUI 的工具 (Aider) 无缝接入上层系统（例如 Multi-Agent 编排框架、IDE 插件等）。
 
 基于 `@agentclientprotocol/sdk` 构建。
 
@@ -79,7 +79,7 @@ const client = builder.build();
 
 #### 强类型事件参考手册 (Type-Safe Event Reference)
 
-`AcpClient` 类通过**严格的 TypeScript 方法重载**重写了 Node 原生的 `EventEmitter` 方法（如 `on`, `once`, `off`）。现代 IDE（如 VS Code）会自动为您提供事件名拼写补全，并对事件的回调参数（Payload）提供完整的类型校验与结构提示。
+`AcpClient` 类通过**严格的 TypeScript 方法重载**重写了 Node 原生的 `EventEmitter` 方法（如 `on`, `once`, `off`）。现代 IDE（如 VS Code）会自动提供事件名拼写补全，并对事件的回调参数（Payload）提供完整的类型校验与结构提示。
 
 以下是客户端支持的完整类型化事件表：
 
