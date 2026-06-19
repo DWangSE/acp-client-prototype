@@ -316,3 +316,55 @@ export interface RuntimeCapabilities {
   modes: boolean;
   commands: boolean;
 }
+
+// ── Driver Contract Types & Aliases ──
+
+export type TaskId = string;
+export type RunId = string;
+export type Timestamp = string;
+export type SchemaVersion = string;
+export type DriverSessionId = string;
+export type DriverId = string;
+
+export const SCHEMA_VERSION = "v0";
+
+export function createId(prefix: string): string {
+  const rand = Math.random().toString(36).substring(2, 10);
+  return `${prefix}-${rand}`;
+}
+
+export function nowTimestamp(): string {
+  return new Date().toISOString();
+}
+
+export type ArtifactType =
+  | "patch"
+  | "diff"
+  | "test_log"
+  | "review"
+  | "decision_packet"
+  | "checkpoint"
+  | "context"
+  | "transcript"
+  | "driver_result"
+  | "audit"
+  | "merge_authorization";
+
+export interface ArtifactRef {
+  artifact_id: string;
+  type: ArtifactType;
+  uri: string;
+  sha256?: string;
+  producer_id: string;
+  task_id?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  schema_version: string;
+}
+
+export interface ContextPackRef {
+  context_pack_id: string;
+  uri: string;
+  task_id?: string;
+  schema_version: string;
+}

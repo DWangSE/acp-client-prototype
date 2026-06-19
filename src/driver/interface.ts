@@ -1,34 +1,16 @@
-export type ArtifactType =
-  | "patch"
-  | "diff"
-  | "test_log"
-  | "review"
-  | "decision_packet"
-  | "checkpoint"
-  | "context"
-  | "transcript"
-  | "driver_result"
-  | "audit"
-  | "merge_authorization";
+import type {
+  ArtifactRef,
+  ContextPackRef,
+  DriverId,
+  DriverSessionId,
+  RunId,
+  SchemaVersion,
+  TaskId,
+  Timestamp,
+} from "../core/types.js";
 
-export interface ArtifactRef {
-  artifact_id: string;
-  type: ArtifactType;
-  uri: string;
-  sha256?: string;
-  producer_id: string;
-  task_id?: string;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-  schema_version: string;
-}
-
-export interface ContextPackRef {
-  context_pack_id: string;
-  uri: string;
-  task_id?: string;
-  schema_version: string;
-}
+// Re-export core references for backward compatibility and downstream modules
+export type { ArtifactRef, ContextPackRef, ArtifactType } from "../core/types.js";
 
 export interface DriverCapabilities {
   supports_acp_extension: boolean;
@@ -39,12 +21,12 @@ export interface DriverCapabilities {
 }
 
 export interface DriverPrompt {
-  task_id: string;
-  run_id: string;
+  task_id: TaskId;
+  run_id: RunId;
   prompt: string;
   context_pack_ref?: ContextPackRef;
-  created_at: string;
-  schema_version: string;
+  created_at: Timestamp;
+  schema_version: SchemaVersion;
 }
 
 export interface DriverToolEvent {
@@ -52,8 +34,8 @@ export interface DriverToolEvent {
   tool_name: string;
   status: "pending" | "in_progress" | "completed" | "failed";
   summary: string;
-  created_at: string;
-  schema_version: string;
+  created_at: Timestamp;
+  schema_version: SchemaVersion;
 }
 
 export interface DriverError {
@@ -66,26 +48,26 @@ export type DriverRunStatus = "succeeded" | "failed" | "cancelled" | "interrupte
 
 export interface DriverRunResult {
   driver_run_result_id: string;
-  session_id: string;
+  session_id: DriverSessionId;
   status: DriverRunStatus;
   artifacts: ArtifactRef[];
   transcript_ref: ArtifactRef;
   tool_events: DriverToolEvent[];
   diagnostics: {
-    driver_id: string;
+    driver_id: DriverId;
     duration_ms: number;
     notes: string[];
   };
   error?: DriverError;
-  created_at: string;
-  schema_version: string;
+  created_at: Timestamp;
+  schema_version: SchemaVersion;
 }
 
 export interface DriverRuntimeHandle {
-  driver_id: string;
-  session_id: string;
+  driver_id: DriverId;
+  session_id: DriverSessionId;
   capabilities: DriverCapabilities;
   sendPrompt(input: DriverPrompt): Promise<DriverRunResult>;
   interrupt(reason: string): Promise<void>;
-  collectTranscript(taskId?: string): Promise<ArtifactRef>;
+  collectTranscript(): Promise<ArtifactRef>;
 }

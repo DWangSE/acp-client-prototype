@@ -1,5 +1,5 @@
+import { SCHEMA_VERSION, createId, nowTimestamp, type ArtifactRef } from "../core/types.js";
 import type {
-  ArtifactRef,
   DriverCapabilities,
   DriverPrompt,
   DriverRunResult,
@@ -29,51 +29,51 @@ export class MockDriver implements DriverRuntimeHandle {
       throw new Error("Driver not initialized. Please call initialize() first.");
     }
 
-    const created_at = new Date().toISOString();
+    const created_at = nowTimestamp();
 
-    // Determine status from prompt (to support diverse testing flows)
+    // Determine success/failed status from prompt
     const isSuccess = !input.prompt.toLowerCase().includes("driver_fail");
     const status: DriverRunStatus = isSuccess ? "succeeded" : "failed";
 
     const patchArtifact: ArtifactRef = {
-      artifact_id: `art-patch-${input.task_id}`,
+      artifact_id: createId("artifact"),
       type: "patch",
       uri: `artifact://patch/${input.task_id}/mock-driver.patch`,
-      sha256: "mock-sha256-hash-value-v0",
+      sha256: "mock-sha256",
       producer_id: this.driver_id,
       task_id: input.task_id,
       metadata: {
-        prompt: input.prompt,
+        prompt_length: input.prompt.length,
         context_pack_id: input.context_pack_ref?.context_pack_id,
       },
       created_at,
-      schema_version: "v0",
+      schema_version: SCHEMA_VERSION,
     };
 
     const transcript = await this.collectTranscript(input.task_id);
 
     return {
-      driver_run_result_id: `driver-res-${input.task_id}`,
+      driver_run_result_id: createId("driver_result"),
       session_id: this.session_id,
       status,
       artifacts: [patchArtifact],
       transcript_ref: transcript,
       tool_events: [
         {
-          tool_event_id: `tool-event-${input.task_id}`,
+          tool_event_id: createId("tool_event"),
           tool_name: "mock.write_patch",
           status: "completed",
-          summary: "MockDriver produced a deterministic patch artifact for testing.",
+          summary: "MockDriver produced a deterministic patch artifact.",
           created_at,
-          schema_version: "v0",
+          schema_version: SCHEMA_VERSION,
         },
       ],
       diagnostics: {
         driver_id: this.driver_id,
-        duration_ms: 12,
+        duration_ms: 1,
         notes: [
           "Mock implementation wrapper for Direction A.",
-          `Prompt matched success status: ${isSuccess}`,
+          "Mock implementation; no real ACP or PTY session was started.",
         ],
       },
       ...(isSuccess
@@ -86,7 +86,7 @@ export class MockDriver implements DriverRuntimeHandle {
             },
           }),
       created_at,
-      schema_version: "v0",
+      schema_version: SCHEMA_VERSION,
     };
   }
 
@@ -95,15 +95,15 @@ export class MockDriver implements DriverRuntimeHandle {
   }
 
   async collectTranscript(taskId = "task"): Promise<ArtifactRef> {
-    const created_at = new Date().toISOString();
+    const created_at = nowTimestamp();
     return {
-      artifact_id: `art-transcript-${taskId}`,
+      artifact_id: createId("artifact"),
       type: "transcript",
       uri: `artifact://transcript/${taskId}/mock-session`,
       producer_id: this.driver_id,
       task_id: taskId,
       created_at,
-      schema_version: "v0",
+      schema_version: SCHEMA_VERSION,
     };
   }
 
