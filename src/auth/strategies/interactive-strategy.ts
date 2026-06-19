@@ -11,7 +11,10 @@ export class InteractiveStrategy implements AuthStrategy {
     }
 
     if (authMethods.length === 1) {
-      if (verbose) console.log(`[Auth:Interactive] Only one method available, auto-selecting: ${authMethods[0].id}`);
+      if (verbose)
+        console.log(
+          `[Auth:Interactive] Only one method available, auto-selecting: ${authMethods[0].id}`
+        );
       return { methodId: authMethods[0].id };
     }
 

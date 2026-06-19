@@ -23,11 +23,11 @@ export class FileSystemHandler implements ClientMethodHandler {
     const fullPath = this.resolvePath(dirPath);
     const entries = await fs.readdir(fullPath, { withFileTypes: true });
     return {
-      entries: entries.map(e => ({
+      entries: entries.map((e) => ({
         name: e.name,
         isDirectory: e.isDirectory(),
-        isFile: e.isFile()
-      }))
+        isFile: e.isFile(),
+      })),
     };
   }
 
@@ -47,7 +47,9 @@ export class FileSystemHandler implements ClientMethodHandler {
   private resolvePath(filePath: string): string {
     const resolved = path.resolve(this.baseDir, filePath);
     if (!resolved.startsWith(this.baseDir)) {
-      throw new PermissionDeniedError(`Access denied: path ${filePath} is outside of base directory`);
+      throw new PermissionDeniedError(
+        `Access denied: path ${filePath} is outside of base directory`
+      );
     }
     return resolved;
   }

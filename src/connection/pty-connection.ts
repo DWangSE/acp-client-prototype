@@ -37,7 +37,7 @@ export class PtyConnection implements AgentConnection {
 
     this.ptyProcess.onData((data) => {
       if (this.verbose) {
-          console.log(`\x1b[32m[PTY Output]\x1b[0m ${data}`);
+        console.log(`\x1b[32m[PTY Output]\x1b[0m ${data}`);
       }
       this.emitEvent("agent_message_chunk", { content: { type: "text", text: data } });
     });
@@ -84,7 +84,7 @@ export class PtyConnection implements AgentConnection {
     if (!this.ptyProcess) throw new PtyError("Not connected");
 
     if (this.verbose) {
-        console.log(`\x1b[34m[PTY Input]\x1b[0m ${message}`);
+      console.log(`\x1b[34m[PTY Input]\x1b[0m ${message}`);
     }
     this.ptyProcess.write(message + "\r");
 
@@ -96,7 +96,7 @@ export class PtyConnection implements AgentConnection {
 
   async cancel(_sessionId: string): Promise<void> {
     if (this.verbose) {
-        console.log(`\x1b[34m[PTY Input]\x1b[0m ^C`);
+      console.log(`\x1b[34m[PTY Input]\x1b[0m ^C`);
     }
     this.ptyProcess?.write("\x03");
   }

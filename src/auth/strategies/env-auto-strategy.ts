@@ -20,10 +20,12 @@ export class EnvAutoStrategy implements AuthStrategy {
     for (const [envVar, methodId] of Object.entries(envMap)) {
       const hasEnv = !!process.env[envVar];
       const hasMethod = authMethods.some((m) => m.id === methodId);
-      
+
       if (verbose) {
-        if (hasEnv && !hasMethod) console.log(`[Auth:Env] Found ${envVar} but agent does not support ${methodId}`);
-        if (!hasEnv && hasMethod) console.log(`[Auth:Env] Agent supports ${methodId} but ${envVar} is missing`);
+        if (hasEnv && !hasMethod)
+          console.log(`[Auth:Env] Found ${envVar} but agent does not support ${methodId}`);
+        if (!hasEnv && hasMethod)
+          console.log(`[Auth:Env] Agent supports ${methodId} but ${envVar} is missing`);
       }
 
       if (hasEnv && hasMethod) {
@@ -36,15 +38,18 @@ export class EnvAutoStrategy implements AuthStrategy {
     if (authMethods.length === 1) {
       const method = authMethods[0];
       // Skip fallback if it's a terminal auth type, as it needs special handling in AutoStrategy
-      const isTerminal = method.type === "terminal" || (method._meta && method._meta["terminal-auth"]);
-      
+      const isTerminal =
+        method.type === "terminal" || (method._meta && method._meta["terminal-auth"]);
+
       if (!isTerminal) {
-        if (verbose) console.log(`[Auth:Env] Only one method available, auto-selecting: ${method.id}`);
+        if (verbose)
+          console.log(`[Auth:Env] Only one method available, auto-selecting: ${method.id}`);
         return { methodId: method.id };
       }
     }
 
-    if (verbose) console.log("[Auth:Env] No matching environment variables found for supported methods");
+    if (verbose)
+      console.log("[Auth:Env] No matching environment variables found for supported methods");
     return null;
   }
 }

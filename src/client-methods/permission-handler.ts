@@ -11,9 +11,9 @@ export class PermissionHandler implements ClientMethodHandler {
       const options = params.options || [];
 
       if (this.autoApprove) {
-        return { 
-          outcome: { type: "selected" }, 
-          optionId: options[0]?.optionId || "proceed_once" 
+        return {
+          outcome: { type: "selected" },
+          optionId: options[0]?.optionId || "proceed_once",
         };
       }
 
@@ -29,9 +29,9 @@ export class PermissionHandler implements ClientMethodHandler {
       });
 
       // Gemini/ACP V1 expectation: outcome is an object with type: "selected"
-      return { 
-        outcome: { type: "selected" }, 
-        optionId: choice 
+      return {
+        outcome: { type: "selected" },
+        optionId: choice,
       };
     }
     throw new Error(`Unsupported permission method: ${method}`);

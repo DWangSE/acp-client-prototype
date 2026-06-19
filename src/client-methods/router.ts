@@ -10,7 +10,7 @@ export class ClientMethodRouter {
   async route(method: string, params: any): Promise<any> {
     const parts = method.split("/");
     const prefix = parts[0];
-    
+
     // Check for exact method first
     let handler = this.handlers.get(method);
     if (!handler) {

@@ -14,7 +14,7 @@ async function runTests() {
       run_id: "run-1",
       prompt: "Hello",
       created_at: new Date().toISOString(),
-      schema_version: "v0"
+      schema_version: "v0",
     });
     console.error("FAIL: Executing uninitialized driver should have thrown an error!");
     process.exit(1);
@@ -32,7 +32,7 @@ async function runTests() {
     run_id: "run-001",
     prompt: "Implement a secure endpoint for user authentication.",
     created_at: new Date().toISOString(),
-    schema_version: "v0"
+    schema_version: "v0",
   };
 
   const successResult = await driver.sendPrompt(successInput);
@@ -40,11 +40,11 @@ async function runTests() {
   if (successResult.status === "succeeded") {
     console.log("SUCCESS: Received success status.");
     console.log(`SUCCESS: Created ${successResult.artifacts.length} artifacts.`);
-    successResult.artifacts.forEach(art => {
+    successResult.artifacts.forEach((art) => {
       console.log(`   Artifact ID: ${art.artifact_id}, Type: ${art.type}, URI: ${art.uri}`);
     });
     console.log(`SUCCESS: Created ${successResult.tool_events.length} tool events.`);
-    successResult.tool_events.forEach(evt => {
+    successResult.tool_events.forEach((evt) => {
       console.log(`   Tool Event [${evt.status}] (${evt.tool_name}): ${evt.summary}`);
     });
   } else {
@@ -58,7 +58,7 @@ async function runTests() {
     run_id: "run-002",
     prompt: "Run compiling command. Should driver_fail.",
     created_at: new Date().toISOString(),
-    schema_version: "v0"
+    schema_version: "v0",
   };
 
   const failResult = await driver.sendPrompt(failInput);
@@ -66,7 +66,7 @@ async function runTests() {
   if (failResult.status === "failed") {
     console.log("SUCCESS: Received failed status.");
     console.log(`SUCCESS: Diagnostics notes length: ${failResult.diagnostics.notes.length}`);
-    failResult.diagnostics.notes.forEach(note => {
+    failResult.diagnostics.notes.forEach((note) => {
       console.log(`   Diagnostic Note: ${note}`);
     });
     console.log(`SUCCESS: Error state: ${JSON.stringify(failResult.error)}`);
@@ -83,7 +83,7 @@ async function runTests() {
   console.log("==================================================");
 }
 
-runTests().catch(err => {
+runTests().catch((err) => {
   console.error("Test execution failed:", err);
   process.exit(1);
 });

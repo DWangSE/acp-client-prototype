@@ -9,7 +9,9 @@ const DEFAULT_PROMPT = "Say 'Hello World' and briefly introduce yourself.";
 class CustomHandler implements ClientMethodHandler {
   async handle(method: string, params: any): Promise<any> {
     if (method === "custom/greet") {
-      return { greeting: `Hello ${params.name || "friend"}, styled with ${params.style || "classic"}!` };
+      return {
+        greeting: `Hello ${params.name || "friend"}, styled with ${params.style || "classic"}!`,
+      };
     }
     throw new Error(`Method not handled: ${method}`);
   }
@@ -36,11 +38,11 @@ async function main(): Promise<void> {
 
   const agentId = args[0];
   const isLoginOnly = args[1] === "/login";
-  const prompt = isLoginOnly ? "" : (args.slice(1).join(" ") || DEFAULT_PROMPT);
+  const prompt = isLoginOnly ? "" : args.slice(1).join(" ") || DEFAULT_PROMPT;
   const verbose = process.env.VERBOSE === "1";
 
   console.log("╔══════════════════════════════════════════════════════════════╗");
-  console.log("║     Universal ACP Client (Separated Test Layer)                ║");
+  console.log("║             Universal ACP Client ( Hello Test )              ║");
   console.log("╚══════════════════════════════════════════════════════════════╝");
   console.log();
   console.log(`Agent: ${agentId}`);
@@ -83,8 +85,8 @@ async function main(): Promise<void> {
     const initResult = await client.initialize({
       experimental: {
         echo: true,
-        status: true
-      }
+        status: true,
+      },
     });
     console.log(`      ✓ Protocol v${initResult.protocolVersion}`);
     console.log(`      ✓ ${initResult.agentInfo?.name} v${initResult.agentInfo?.version}`);
@@ -113,11 +115,6 @@ async function main(): Promise<void> {
     // Send the prompt instruction
     const turn = await client.sendPrompt(prompt);
 
-    // Consume the turn to keep the event loop alive and get final results
-    for await (const event of turn) {
-      // Event chunk handling is already taken care of by the client.on listeners above!
-    }
-
     const result = await turn.result;
     console.log();
     console.log("══════════════════════════════════════════════════════════════");
@@ -127,7 +124,11 @@ async function main(): Promise<void> {
   } catch (error) {
     console.error("\n[Test:Error]:", error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
-    try { await client.shutdown(); } catch { /* ignore */ }
+    try {
+      await client.shutdown();
+    } catch {
+      /* ignore */
+    }
   }
 }
 

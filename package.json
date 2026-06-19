@@ -4,11 +4,20 @@
   "description": "Universal ACP Client — Connect to any ACP-compliant agent",
   "main": "dist/src/index.js",
   "type": "module",
+  "packageManager": "pnpm@11.8.0",
   "scripts": {
     "build": "tsc",
     "build:test": "tsc -p tsconfig.test.json",
-    "hello": "npm run build && npm run build:test && node dist/tests/hello.js",
-    "clean": "node -e \"require('fs').rmSync('dist', {recursive:true, force:true})\""
+    "clean": "node -e \"require('fs').rmSync('dist', {recursive:true, force:true})\"",
+    "hello": "pnpm run build && pnpm run build:test && node dist/tests/hello.js",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "node --test dist/tests/**/*.test.js",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run build:test && pnpm run test",
+    "prepare": "husky"
   },
   "keywords": [
     "acp",
@@ -34,8 +43,32 @@
     "opencode-ai": "^1.15.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
+    "@eslint/js": "^9.26.0",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^20.0.0",
-    "typescript": "^5.9.3"
+    "@typescript-eslint/eslint-plugin": "^8.32.0",
+    "@typescript-eslint/parser": "^8.32.0",
+    "eslint": "^9.26.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.4.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
+    "prettier": "^3.6.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.32.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=11.8.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,json,md}": [
+      "prettier --write"
+    ],
+    "*.{ts,tsx}": [
+      "eslint --fix"
+    ]
   }
 }

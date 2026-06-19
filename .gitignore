@@ -134,3 +134,20 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# 本地状态 / 会话转储 / 归档（正是我们踩过的坑）
+*.session.json
+my-session.json
+*.zip
+*.tar.gz
+*.log
+
+# editor & OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# research files
+research/
+standard.txt

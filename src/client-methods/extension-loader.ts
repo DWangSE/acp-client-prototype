@@ -40,7 +40,7 @@ function parseSimpleYaml(content: string): ExtensionMethod[] {
       }
       currentMethod = {};
       inParams = false;
-      
+
       const kv = line.slice(1).trim();
       if (kv) {
         parseKeyValue(kv, currentMethod);
@@ -81,7 +81,11 @@ function parseSimpleYaml(content: string): ExtensionMethod[] {
 function parseKeyValue(line: string, target: any) {
   const parts = line.split(":");
   const key = parts[0].trim();
-  const value = parts.slice(1).join(":").trim().replace(/^['"]|['"]$/g, "");
+  const value = parts
+    .slice(1)
+    .join(":")
+    .trim()
+    .replace(/^['"]|['"]$/g, "");
   if (key === "name") target.name = value;
   else if (key === "description") target.description = value;
 }

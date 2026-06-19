@@ -14,7 +14,7 @@ export interface AgentAdapter {
   // ACP specific quirks
   beforeSpawn?(): Promise<void>;
   normalizeResponse?(method: string, raw: unknown): unknown;
-  
+
   /** Mapping of Environment Variables to Auth Method IDs */
   authEnvMap?: Record<string, string>;
 

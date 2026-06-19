@@ -1,11 +1,11 @@
 import { EventEmitter } from "node:events";
 import { AgentConnection, ConnectionEvent, TurnController } from "../connection/interface.js";
-import { AgentAdapter } from "../adapter/interface.js";
+import { AgentAdapter } from "../driver-adapter/interface.js";
 import { AuthLayer } from "../auth/auth-layer.js";
 import { SessionManager, SessionInfo } from "../session/interface.js";
 import { ClientMethodRouter } from "../client-methods/router.js";
 import { ClientInterceptors, HookPoint } from "../hook-gate/interface.js";
-import { AuthError, SessionError } from "../core/errors.js";
+import { SessionError } from "../core/errors.js";
 import type { InitializeResult } from "../connection/interface.js";
 import type { ClientCapabilities } from "../core/types.js";
 
@@ -43,7 +43,7 @@ export class AcpClient extends EventEmitter {
   private authMethods: any[] = [];
   private currentSession: SessionInfo | null = null;
   private abortController: AbortController | null = null;
-  
+
   private status: ClientState = "disconnected";
 
   constructor(options: AcpClientOptions) {
@@ -64,23 +64,56 @@ export class AcpClient extends EventEmitter {
   // Type-safe Event Emitter Overloads
   override emit(event: "stateChange", newState: ClientState, oldState: ClientState): boolean;
   override emit(event: "event", connEvent: ConnectionEvent): boolean;
-  override emit(event: "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "stderr" | "agentMessage", payload: any): boolean;
+  override emit(
+    event:
+      | "agent_message_chunk"
+      | "agent_thought_chunk"
+      | "tool_call"
+      | "tool_call_update"
+      | "stderr"
+      | "agentMessage",
+    payload: any
+  ): boolean;
   override emit(event: HookPoint, payload: any): boolean;
   override emit(event: string | symbol, ...args: any[]): boolean {
     return super.emit(event, ...args);
   }
 
-  override on(event: "stateChange", listener: (newState: ClientState, oldState: ClientState) => void): this;
+  override on(
+    event: "stateChange",
+    listener: (newState: ClientState, oldState: ClientState) => void
+  ): this;
   override on(event: "event", listener: (connEvent: ConnectionEvent) => void): this;
-  override on(event: "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "stderr" | "agentMessage", listener: (payload: any) => void): this;
+  override on(
+    event:
+      | "agent_message_chunk"
+      | "agent_thought_chunk"
+      | "tool_call"
+      | "tool_call_update"
+      | "stderr"
+      | "agentMessage",
+    listener: (payload: any) => void
+  ): this;
   override on(event: HookPoint, listener: (payload: any) => void): this;
   override on(event: string | symbol, listener: (...args: any[]) => void): this {
     return super.on(event, listener);
   }
 
-  override once(event: "stateChange", listener: (newState: ClientState, oldState: ClientState) => void): this;
+  override once(
+    event: "stateChange",
+    listener: (newState: ClientState, oldState: ClientState) => void
+  ): this;
   override once(event: "event", listener: (connEvent: ConnectionEvent) => void): this;
-  override once(event: "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "stderr" | "agentMessage", listener: (payload: any) => void): this;
+  override once(
+    event:
+      | "agent_message_chunk"
+      | "agent_thought_chunk"
+      | "tool_call"
+      | "tool_call_update"
+      | "stderr"
+      | "agentMessage",
+    listener: (payload: any) => void
+  ): this;
   override once(event: HookPoint, listener: (payload: any) => void): this;
   override once(event: string | symbol, listener: (...args: any[]) => void): this {
     return super.once(event, listener);
@@ -131,7 +164,7 @@ export class AcpClient extends EventEmitter {
       terminal: true,
       experimental: {
         ...this.experimentalCapabilities,
-        ...customCapabilities?.experimental
+        ...customCapabilities?.experimental,
       },
       ...customCapabilities,
     };
@@ -147,7 +180,7 @@ export class AcpClient extends EventEmitter {
     this.abortController = new AbortController();
 
     this.emit("post:initialize", { point: "post:initialize", agentId, data: result });
-    
+
     // Setup event forwarding
     this.setupEventForwarding(this.abortController.signal);
 
@@ -177,15 +210,16 @@ export class AcpClient extends EventEmitter {
 
           this.emit("event", finalEvent);
           this.emit(finalEvent.type as any, finalEvent.payload);
-          
-          if (finalEvent.type === "agent_message_chunk") this.emit("agentMessage", finalEvent.payload);
+
+          if (finalEvent.type === "agent_message_chunk")
+            this.emit("agentMessage", finalEvent.payload);
           if (finalEvent.type === "stderr") this.emit("stderr", finalEvent.payload);
         }
       } catch (err) {
         if (!signal.aborted && this.verbose) console.error("[AcpClient] Event loop error:", err);
       }
-    })().catch(err => {
-        if (this.verbose) console.error("[AcpClient] Event loop error:", err);
+    })().catch((err) => {
+      if (this.verbose) console.error("[AcpClient] Event loop error:", err);
     });
   }
 
@@ -196,7 +230,7 @@ export class AcpClient extends EventEmitter {
 
     const strategy = this.adapter.resolveAuthStrategy();
     if (this.verbose) console.log(`[Auth] Using strategy: ${strategy}`);
-    
+
     const credential = await this.authLayer.execute(strategy, this.authMethods, this.verbose);
 
     if (credential) {
@@ -226,7 +260,11 @@ export class AcpClient extends EventEmitter {
       agentId,
     };
 
-    this.emit("post:session:create", { point: "post:session:create", agentId, data: this.currentSession });
+    this.emit("post:session:create", {
+      point: "post:session:create",
+      agentId,
+      data: this.currentSession,
+    });
     this.setState("ready");
     return this.currentSession;
   }
@@ -244,10 +282,12 @@ export class AcpClient extends EventEmitter {
 
     const originalSymbolIterator = turn[Symbol.asyncIterator];
     const self = this;
-    
+
     const wrappedTurn: TurnController = {
       cancel: () => turn.cancel(),
-      get result() { return turn.result; },
+      get result() {
+        return turn.result;
+      },
       [Symbol.asyncIterator]() {
         const iterator = originalSymbolIterator.call(turn);
         return {
@@ -272,9 +312,9 @@ export class AcpClient extends EventEmitter {
             self.setState("ready");
             if (iterator.throw) return iterator.throw(err);
             throw err;
-          }
+          },
         };
-      }
+      },
     };
 
     return wrappedTurn;

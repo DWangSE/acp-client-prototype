@@ -43,7 +43,7 @@ export abstract class BaseAdapter implements AgentAdapter {
     return raw;
   }
 
-  parsePtyOutput?(chunk: string): any[] {
+  parsePtyOutput?(_chunk: string): any[] {
     return [];
   }
 }

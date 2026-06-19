@@ -4,7 +4,7 @@ import type {
   DriverPrompt,
   DriverRunResult,
   DriverRuntimeHandle,
-  DriverRunStatus
+  DriverRunStatus,
 } from "./interface.js";
 
 export class MockDriver implements DriverRuntimeHandle {
@@ -15,7 +15,7 @@ export class MockDriver implements DriverRuntimeHandle {
     supports_structured_output: true,
     supports_session_load: false,
     supports_tool_events: true,
-    supports_permission_events: false
+    supports_permission_events: false,
   };
 
   private initialized = false;
@@ -30,7 +30,7 @@ export class MockDriver implements DriverRuntimeHandle {
     }
 
     const created_at = new Date().toISOString();
-    
+
     // Determine status from prompt (to support diverse testing flows)
     const isSuccess = !input.prompt.toLowerCase().includes("driver_fail");
     const status: DriverRunStatus = isSuccess ? "succeeded" : "failed";
@@ -44,10 +44,10 @@ export class MockDriver implements DriverRuntimeHandle {
       task_id: input.task_id,
       metadata: {
         prompt: input.prompt,
-        context_pack_id: input.context_pack_ref?.context_pack_id
+        context_pack_id: input.context_pack_ref?.context_pack_id,
       },
       created_at,
-      schema_version: "v0"
+      schema_version: "v0",
     };
 
     const transcript = await this.collectTranscript(input.task_id);
@@ -65,26 +65,28 @@ export class MockDriver implements DriverRuntimeHandle {
           status: "completed",
           summary: "MockDriver produced a deterministic patch artifact for testing.",
           created_at,
-          schema_version: "v0"
-        }
+          schema_version: "v0",
+        },
       ],
       diagnostics: {
         driver_id: this.driver_id,
         duration_ms: 12,
         notes: [
           "Mock implementation wrapper for Direction A.",
-          `Prompt matched success status: ${isSuccess}`
-        ]
+          `Prompt matched success status: ${isSuccess}`,
+        ],
       },
-      ...(isSuccess ? {} : {
-        error: {
-          code: "COMPILATION_ERROR",
-          message: "Simulated driver compilation failure.",
-          retryable: true
-        }
-      }),
+      ...(isSuccess
+        ? {}
+        : {
+            error: {
+              code: "COMPILATION_ERROR",
+              message: "Simulated driver compilation failure.",
+              retryable: true,
+            },
+          }),
       created_at,
-      schema_version: "v0"
+      schema_version: "v0",
     };
   }
 
@@ -101,7 +103,7 @@ export class MockDriver implements DriverRuntimeHandle {
       producer_id: this.driver_id,
       task_id: taskId,
       created_at,
-      schema_version: "v0"
+      schema_version: "v0",
     };
   }
 

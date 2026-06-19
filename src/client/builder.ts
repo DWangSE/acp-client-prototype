@@ -1,5 +1,5 @@
 import { AcpClient, AcpClientOptions } from "./acp-client.js";
-import { ADAPTER_REGISTRY } from "../adapter/registry.js";
+import { ADAPTER_REGISTRY } from "../driver-adapter/registry.js";
 import { AcpConnection } from "../connection/acp-connection.js";
 import { PtyConnection } from "../connection/pty-connection.js";
 import { AuthLayer } from "../auth/auth-layer.js";
@@ -10,7 +10,7 @@ import { FileSystemHandler } from "../client-methods/filesystem-handler.js";
 import { PermissionHandler } from "../client-methods/permission-handler.js";
 import { TerminalHandler } from "../client-methods/terminal-handler.js";
 import { ClientMethodHandler } from "../client-methods/interface.js";
-import { loadExtensionConfig, ExtensionMethod } from "../client-methods/extension-loader.js";
+import { loadExtensionConfig } from "../client-methods/extension-loader.js";
 
 export class AcpClientBuilder {
   private agentId?: string;
@@ -73,7 +73,10 @@ export class AcpClientBuilder {
 
     // Register default handlers
     methodRouter.register("fs", new FileSystemHandler(this.sandboxDir));
-    methodRouter.register("session", new PermissionHandler(this.autoApprove || process.env.AUTO_APPROVE === "1"));
+    methodRouter.register(
+      "session",
+      new PermissionHandler(this.autoApprove || process.env.AUTO_APPROVE === "1")
+    );
     methodRouter.register("terminal", new TerminalHandler());
 
     // Register user defined handlers
@@ -94,7 +97,9 @@ export class AcpClientBuilder {
         }
       } catch (err) {
         if (this.verbose) {
-          console.error(`[ClientBuilder] Failed to load extension config: ${err instanceof Error ? err.message : String(err)}`);
+          console.error(
+            `[ClientBuilder] Failed to load extension config: ${err instanceof Error ? err.message : String(err)}`
+          );
         }
         throw err;
       }

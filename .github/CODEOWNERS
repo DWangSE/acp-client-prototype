@@ -1,0 +1,17 @@
+# Global owners (fallback for all files)
+*       @DWangSE
+
+# Specific areas of the codebase
+/src/auth/              @DWangSE
+/src/client/            @DWangSE
+/src/connection/        @DWangSE
+/src/driver/            @DWangSE
+/src/driver-adapter/    @DWangSE
+/src/hook-gate/         @DWangSE
+/src/session/           @DWangSE
+
+# Configuration & CI files
+/eslint.config.js       @DWangSE
+/prettier.config.js     @DWangSE
+/tsconfig.json          @DWangSE
+/.github/workflows/     @DWangSE

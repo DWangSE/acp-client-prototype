@@ -3,7 +3,11 @@
  */
 
 export class AcpError extends Error {
-  constructor(message: string, public readonly code?: string | number, public readonly data?: unknown) {
+  constructor(
+    message: string,
+    public readonly code?: string | number,
+    public readonly data?: unknown
+  ) {
     super(message);
     this.name = this.constructor.name;
     Object.setPrototypeOf(this, new.target.prototype);

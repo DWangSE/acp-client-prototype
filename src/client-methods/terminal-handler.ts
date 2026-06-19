@@ -18,7 +18,7 @@ export class TerminalHandler implements ClientMethodHandler {
         });
 
         this.terminals.set(id, proc);
-        
+
         return { terminalId: id };
       }
 

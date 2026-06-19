@@ -47,21 +47,24 @@ export class AcpConnection implements AgentConnection {
     if (this.verbose) {
       const agentLabel = `${options.command} ${options.args.join(" ")}`;
       this.process.stdout.on("data", (chunk) => {
-        const text = Buffer.isBuffer(chunk) || chunk instanceof Uint8Array 
-            ? Buffer.from(chunk).toString() 
+        const text =
+          Buffer.isBuffer(chunk) || chunk instanceof Uint8Array
+            ? Buffer.from(chunk).toString()
             : String(chunk);
         console.log(`\x1b[32m[Raw Output from ${agentLabel}]\x1b[0m ${text.trim()}`);
       });
       this.process.stderr?.on("data", (chunk) => {
-        const text = Buffer.isBuffer(chunk) || chunk instanceof Uint8Array 
-            ? Buffer.from(chunk).toString() 
+        const text =
+          Buffer.isBuffer(chunk) || chunk instanceof Uint8Array
+            ? Buffer.from(chunk).toString()
             : String(chunk);
         console.log(`\x1b[31m[Raw Stderr from ${agentLabel}]\x1b[0m ${text.trim()}`);
       });
       const originalWrite = this.process.stdin.write.bind(this.process.stdin);
       this.process.stdin.write = (chunk: any, encoding?: any, cb?: any) => {
-        const text = Buffer.isBuffer(chunk) || chunk instanceof Uint8Array 
-            ? Buffer.from(chunk).toString() 
+        const text =
+          Buffer.isBuffer(chunk) || chunk instanceof Uint8Array
+            ? Buffer.from(chunk).toString()
             : String(chunk);
         console.log(`\x1b[34m[Raw Input to ${agentLabel}]\x1b[0m ${text.trim()}`);
         return originalWrite(chunk, encoding, cb);
@@ -81,25 +84,26 @@ export class AcpConnection implements AgentConnection {
         this.emitEvent(updateType as any, params);
       },
       requestPermission: async (params) => {
-        if (this.methodRouter) return await this.methodRouter.route("session/request_permission", params);
+        if (this.methodRouter)
+          return await this.methodRouter.route("session/request_permission", params);
         this.emitEvent("permission_request", params);
         return { outcome: "denied" };
       },
       readTextFile: async (params) => {
-          if (this.methodRouter) return await this.methodRouter.route("fs/read_text_file", params);
-          this.emitEvent("fs/read_text_file" as any, params);
-          return { content: "" };
+        if (this.methodRouter) return await this.methodRouter.route("fs/read_text_file", params);
+        this.emitEvent("fs/read_text_file" as any, params);
+        return { content: "" };
       },
       writeTextFile: async (params) => {
-          if (this.methodRouter) return await this.methodRouter.route("fs/write_text_file", params);
-          this.emitEvent("fs/write_text_file" as any, params);
-          return {};
+        if (this.methodRouter) return await this.methodRouter.route("fs/write_text_file", params);
+        this.emitEvent("fs/write_text_file" as any, params);
+        return {};
       },
       createTerminal: async (params) => {
-          if (this.methodRouter) return await this.methodRouter.route("terminal/create", params);
-          this.emitEvent("terminal/create" as any, params);
-          return { terminalId: "term_stub" };
-      }
+        if (this.methodRouter) return await this.methodRouter.route("terminal/create", params);
+        this.emitEvent("terminal/create" as any, params);
+        return { terminalId: "term_stub" };
+      },
     };
 
     this.sdkConn = new ClientSideConnection(() => clientImpl, stream);
@@ -192,7 +196,7 @@ class AcpTurnController implements TurnController {
         const connEvent = event as ConnectionEvent;
         // Filter by session ID if possible (SessionNotification has sessionId)
         if (connEvent.payload?.sessionId && connEvent.payload.sessionId !== this.sessionId) {
-            continue;
+          continue;
         }
         yield connEvent;
       }
