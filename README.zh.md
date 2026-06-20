@@ -3,8 +3,7 @@
 [![EN](https://img.shields.io/badge/Language-English-blue.svg)](README.md)
 [![ZH](https://img.shields.io/badge/Language-中文-red.svg)](README.zh.md)
 
-
-# Universal ACP Client 
+# Universal ACP Client
 
 一个模块化、高可扩展的 ACP (Agent Client Protocol) 宿主客户端类库，用于将标准的 AI 编码 Agent (Gemini, Claude, Codex) 以及基于 TUI 的工具 (Aider) 无缝接入上层系统（例如 Multi-Agent 编排框架、IDE 插件等）。
 
@@ -24,17 +23,20 @@
 ## 快速开始
 
 ### 1. 安装依赖
+
 ```bash
 npm install
 ```
 
 ### 2. 配置凭证
+
 ```bash
 cp .env.example .env
 # 编辑 .env 并填入 API Key (例如 GEMINI_API_KEY)
 ```
 
 ### 3. 运行隔离的集成测试
+
 ```bash
 npm run hello -- gemini "Hello World"
 ```
@@ -51,11 +53,11 @@ npm run hello -- gemini "Hello World"
 import { AcpClientBuilder } from "acp-client-prototype";
 
 const builder = new AcpClientBuilder()
-  .withAgent("gemini")                         // 选择要连接的 Agent 标识 (如 gemini, claude)
-  .withVerbose(true)                           // 开启详细调试输出
-  .withAutoApprove(true)                       // 自动批准所有敏感权限请求
-  .withSandboxDir("/my-sandbox")                // 指定文件系统沙箱路径
-  .withExtensionConfig("extensions.yaml")      // 载入自定义 ACP 扩展协议描述文件
+  .withAgent("gemini") // 选择要连接的 Agent 标识 (如 gemini, claude)
+  .withVerbose(true) // 开启详细调试输出
+  .withAutoApprove(true) // 自动批准所有敏感权限请求
+  .withSandboxDir("/my-sandbox") // 指定文件系统沙箱路径
+  .withExtensionConfig("extensions.yaml") // 载入自定义 ACP 扩展协议描述文件
   .registerExtensionHandler("custom/greet", new MyCustomHandler()); // 注册自定义方法处理器
 
 const client = builder.build();
@@ -70,6 +72,7 @@ const client = builder.build();
 #### Client 连接与 turn 状态机 (`ClientState`)
 
 宿主状态可通过 `client.getState()` 进行实时查询，包含以下状态：
+
 - `disconnected`: Agent 子进程未启动。
 - `initializing`: 进程已启动，正在执行 initialize 协议握手。
 - `authenticated`: 握手成功，客户端已自动解析并执行完成 Agent 对应策略的鉴权。
@@ -83,16 +86,16 @@ const client = builder.build();
 
 以下是客户端支持的完整类型化事件表：
 
-| 事件名称 (Event Name) | 回调参数类型 (Parameter Type) | 事件描述 |
-|----------------------|----------------------------|---------|
-| `stateChange` | `(newState: ClientState, oldState: ClientState)` | 任何连接状态、会话执行状态发生转换时触发。 |
-| `event` | `(event: ConnectionEvent)` | 底层连接层收到的所有原始数据包包头包装。 |
-| `agent_message_chunk` | `(payload: any)` | Agent 流式返回的文本消息 Token 片段。 |
-| `agent_thought_chunk` | `(payload: any)` | 支持推理思维链的 Agent 正在流式输出的思考 Token 片段。 |
-| `tool_call` | `(payload: any)` | Agent 请求调用特定的主机/客户端工具/方法。 |
-| `tool_call_update` | `(payload: any)` | 被调用的工具执行完成、失败等执行状态更新。 |
-| `stderr` | `(payload: any)` | 远端 Agent 进程抛出的原始标准错误诊断输出。 |
-| `permission_request` | `(payload: any)` | Agent 请求高风险操作（如运行终端脚本）时触发的交互式授权。 |
+| 事件名称 (Event Name) | 回调参数类型 (Parameter Type)                    | 事件描述                                                   |
+| --------------------- | ------------------------------------------------ | ---------------------------------------------------------- |
+| `stateChange`         | `(newState: ClientState, oldState: ClientState)` | 任何连接状态、会话执行状态发生转换时触发。                 |
+| `event`               | `(event: ConnectionEvent)`                       | 底层连接层收到的所有原始数据包包头包装。                   |
+| `agent_message_chunk` | `(payload: any)`                                 | Agent 流式返回的文本消息 Token 片段。                      |
+| `agent_thought_chunk` | `(payload: any)`                                 | 支持推理思维链的 Agent 正在流式输出的思考 Token 片段。     |
+| `tool_call`           | `(payload: any)`                                 | Agent 请求调用特定的主机/客户端工具/方法。                 |
+| `tool_call_update`    | `(payload: any)`                                 | 被调用的工具执行完成、失败等执行状态更新。                 |
+| `stderr`              | `(payload: any)`                                 | 远端 Agent 进程抛出的原始标准错误诊断输出。                |
+| `permission_request`  | `(payload: any)`                                 | Agent 请求高风险操作（如运行终端脚本）时触发的交互式授权。 |
 
 ```typescript
 // 支持拼写补全与类型校验
@@ -102,7 +105,9 @@ client.on("stateChange", (newState, oldState) => {
 ```
 
 #### 订阅细粒度数据流 (出口)
+
 上层程序可直接订阅特定的事件名称，实现高亮文本、日志归档或人工审核拦截：
+
 ```typescript
 // 监听 Agent 输出的文本消息流
 client.on("agent_message_chunk", (payload) => {
@@ -127,6 +132,7 @@ client.on("tool_call", (payload) => {
 要为 Client 增加新的方法/能力，扩展者**完全不需要修改 Client 核心代码**，只需简单 3 步：
 
 #### 第一步：在配置文件中描述方法 (`extensions.yaml`)
+
 ```yaml
 methods:
   - name: "custom/greet"
@@ -137,15 +143,17 @@ methods:
 ```
 
 #### 第二步：编写方法处理器 (`ClientMethodHandler`)
+
 编写一个类，实现 `ClientMethodHandler` 接口：
+
 ```typescript
 import { ClientMethodHandler } from "acp-client-prototype";
 
 class MyCustomHandler implements ClientMethodHandler {
   async handle(method: string, params: any): Promise<any> {
     if (method === "custom/greet") {
-      return { 
-        greeting: `Hello ${params.name || "User"}, styled using: ${params.style || "plain"}` 
+      return {
+        greeting: `Hello ${params.name || "User"}, styled using: ${params.style || "plain"}`,
       };
     }
     throw new Error(`Unsupported custom method: ${method}`);
@@ -154,28 +162,32 @@ class MyCustomHandler implements ClientMethodHandler {
 ```
 
 #### 第三步：使用 Builder 注册
+
 ```typescript
 const builder = new AcpClientBuilder()
   .withAgent("gemini")
   .withExtensionConfig("extensions.yaml")
   .registerExtensionHandler("custom/greet", new MyCustomHandler());
 ```
+
 在 Client 初始化时，这些自定义方法会自动注入到 `clientCapabilities.experimental` 中传输给 Agent，告知其本宿主客户端支持此方法的调用。
 
 ---
 
 ## 已支持的适配器列表
 
-| Agent 标识 | 连接方式 | 鉴权策略 | 描述 |
-|------------|----------|----------|------|
-| **gemini** | `acp` | `env-auto` | 通过 `gemini-cli` 连接 Google Gemini |
-| **claude** | `acp` | `none` | 通过 `claude-agent-acp` 连接 Anthropic Claude |
-| **codex** | `acp` | `none` | 通过 `codex-acp` 连接 OpenAI Codex |
-| **aider** | `pty` | `pre-configured` | 通过 PTY 伪终端兜底连接 AI 编码助手 Aider |
+| Agent 标识    | 连接方式 | 鉴权策略         | 描述                                          |
+| ------------- | -------- | ---------------- | --------------------------------------------- |
+| **gemini**    | `acp`    | `env-auto`       | 通过 `gemini-cli` 连接 Google Gemini          |
+| **claude**    | `acp`    | `none`           | 通过 `claude-agent-acp` 连接 Anthropic Claude |
+| **codex**     | `acp`    | `none`           | 通过 `codex-acp` 连接 OpenAI Codex            |
+| **codebuddy** | `acp`    | `env-auto`       | 通过 `codebuddy-code` 连接腾讯 CodeBuddy      |
+| **aider**     | `pty`    | `pre-configured` | 通过 PTY 伪终端兜底连接 AI 编码助手 Aider     |
 
 ---
 
 ## 项目架构图
+
 ```
 src/
 ├── adapter/          # Agent 定义、差异抹平及扩展注册表
@@ -197,9 +209,11 @@ tests/
 ### 4. A 方向 Driver 契约包装层 (`src/driver/`)
 
 为了支持端到端多智能体 BCD 流水线，微观协议通道层的 `AcpClient` 被包裹在 `MockDriver` 适配器中，该适配器完全实现了 C 方向要求的 `DriverRuntimeHandle` 接口：
+
 - **`sendPrompt(input: DriverPrompt): Promise<DriverRunResult>`**：宏观任务执行信封，向 C 方向返回标准的补丁产物引用与审计日志。
 
 执行独立的 A 方向驱动集成测试契约套件：
+
 ```bash
 npm run build && npm run build:test && node dist/tests/driver.test.js
 ```
@@ -210,13 +224,13 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 
 ## 核心环境变量
 
-| 变量名 | 描述 |
-|--------|------|
-| `VERBOSE=1` | 开启详细的调试与状态转移日志 |
-| `AUTO_APPROVE=1` | 自动批准所有 Agent 对文件系统、终端操作的授权请求 |
-| `GEMINI_API_KEY` | Gemini 适配器的 API Key |
-| `ANTHROPIC_API_KEY` | Claude 适配器的 API Key |
-| `OPENAI_API_KEY` | Codex/Aider 的 API Key |
+| 变量名              | 描述                                              |
+| ------------------- | ------------------------------------------------- |
+| `VERBOSE=1`         | 开启详细的调试与状态转移日志                      |
+| `AUTO_APPROVE=1`    | 自动批准所有 Agent 对文件系统、终端操作的授权请求 |
+| `GEMINI_API_KEY`    | Gemini 适配器的 API Key                           |
+| `ANTHROPIC_API_KEY` | Claude 适配器的 API Key                           |
+| `OPENAI_API_KEY`    | Codex/Aider 的 API Key                            |
 
 ---
 
