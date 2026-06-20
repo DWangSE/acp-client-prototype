@@ -4,6 +4,7 @@ import { AiderAdapter } from "./adapters/aider-adapter.js";
 import { ClaudeAdapter } from "./adapters/claude-adapter.js";
 import { CodexAdapter } from "./adapters/codex-adapter.js";
 import { KimiAdapter } from "./adapters/kimi-adapter.js";
+import { CodebuddyAdapter } from "./adapters/codebuddy-adapter.js";
 
 class AdapterRegistry {
   private adapters = new Map<string, AgentAdapter>();
@@ -14,6 +15,7 @@ class AdapterRegistry {
     this.register(new ClaudeAdapter());
     this.register(new CodexAdapter());
     this.register(new KimiAdapter());
+    this.register(new CodebuddyAdapter());
   }
 
   register(adapter: AgentAdapter) {
