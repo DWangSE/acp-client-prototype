@@ -1,17 +1,14 @@
-## PR Checklist
+## 做了什么
 
-Please verify that your Pull Request meets the following requirements before requesting a review:
+<!-- 一句话说清这个 PR 的目的 -->
 
-- [ ] **Verification**: `pnpm verify` passes locally with no linting, type-checking, or test errors.
-- [ ] **Formatting**: Code formatting conforms to Prettier (as checked/written by `pnpm run format`).
-- [ ] **Test Coverage**: Added new tests to cover changes or bug fixes, and verified they run successfully.
-- [ ] **Documentation**: Documented API changes or new features in corresponding markdown documentation (such as `README.md` or API docs).
-- [ ] **Commit Messages**: Commit messages are descriptive and structured professionally.
+## 关联
 
-## Description
+Closes #<issue 号>　|　涉及契约：<契约编号/无>
 
-Provide a brief summary of the changes introduced by this PR, the problem solved, and any relevant context.
+## 自检清单
 
-## Related Issue / Task
-
-Fixes # (issue number) or references task (link).
+- [ ] 本地 `pnpm verify` 通过
+- [ ] 改动是小而聚焦的（< 400 行优先）
+- [ ] 若改了对外接口/契约，已通知依赖方并更新契约文档
+- [ ] 新增/变更逻辑有对应测试或验证说明
