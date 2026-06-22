@@ -20,6 +20,9 @@ importers:
       '@inquirer/prompts':
         specifier: ^7.5.0
         version: 7.5.0(@types/node@20.19.43)
+      '@tencent-ai/codebuddy-code':
+        specifier: ^2.108.2
+        version: 2.108.2
       '@zed-industries/codex-acp':
         specifier: ^0.15.0
         version: 0.15.0
@@ -454,8 +457,18 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
+  '@lydell/node-pty-darwin-arm64@1.2.0-beta.12':
+    resolution: {integrity: sha512-tqaifcY9Cr41SblO1+FLzh8oxxtkNhuW9Dhl22lKme9BreYvKvxEZcdPIXTuqkJc5tagOEC4QHShKmJjLyLXLQ==}
+    cpu: [arm64]
+    os: [darwin]
+
   '@lydell/node-pty-darwin-x64@1.1.0':
     resolution: {integrity: sha512-XZdvqj5FjAMjH8bdp0YfaZjur5DrCIDD1VYiE9EkkYVMDQqRUPHYV3U8BVEQVT9hYfjmpr7dNaELF2KyISWSNA==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@lydell/node-pty-darwin-x64@1.2.0-beta.12':
+    resolution: {integrity: sha512-4LrS5pCJwqHKDVf1zS2gyNV0m4hKAXch+XZNhbZ6LY8uwVL8BhchzQBO40Os5anuRxRCWzHpw4Sp64Ie8q7E4Q==}
     cpu: [x64]
     os: [darwin]
 
@@ -464,8 +477,18 @@ packages:
     cpu: [arm64]
     os: [linux]
 
+  '@lydell/node-pty-linux-arm64@1.2.0-beta.12':
+    resolution: {integrity: sha512-Sx+A71x5BDGHt9ansfrtGxwq2VFVDWvJUAdlUL0Hv0qeiJUfts+hgopx+CgT4PSwahKjdEgtu0+FAfY9rICKRw==}
+    cpu: [arm64]
+    os: [linux]
+
   '@lydell/node-pty-linux-x64@1.1.0':
     resolution: {integrity: sha512-NcNqRTD14QT+vXcEuqSSvmWY+0+WUBn2uRE8EN0zKtDpIEr9d+YiFj16Uqds6QfcLCHfZmC+Ls7YzwTaqDnanA==}
+    cpu: [x64]
+    os: [linux]
+
+  '@lydell/node-pty-linux-x64@1.2.0-beta.12':
+    resolution: {integrity: sha512-bJzs94njofYhGg/UDqW1nj0dtvvu+2OvxMY+RlLS1T17VgcktKoIR6PuenTwE5HJ/D6StCPADmXcT0nNsCKmIQ==}
     cpu: [x64]
     os: [linux]
 
@@ -474,13 +497,26 @@ packages:
     cpu: [arm64]
     os: [win32]
 
+  '@lydell/node-pty-win32-arm64@1.2.0-beta.12':
+    resolution: {integrity: sha512-p7POgjVEiFaBC3/y+AKuV1FzePCsJ6HmZDv2XK+jBZSfwP8+uBAw181ZiKYN1YuRa/XpmBGaWezcI8hZkbW++g==}
+    cpu: [arm64]
+    os: [win32]
+
   '@lydell/node-pty-win32-x64@1.1.0':
     resolution: {integrity: sha512-3N56BZ+WDFnUMYRtsrr7Ky2mhWGl9xXcyqR6cexfuCqcz9RNWL+KoXRv/nZylY5dYaXkft4JaR1uVu+roiZDAw==}
     cpu: [x64]
     os: [win32]
 
+  '@lydell/node-pty-win32-x64@1.2.0-beta.12':
+    resolution: {integrity: sha512-IDFa00g7qUDGUYgByrUBJtC+mOjYVt/8KYyWivCg5JjGOHbBUACUQZLl0jTWmnr+tld/UyTpX90a2PY6oTVtRw==}
+    cpu: [x64]
+    os: [win32]
+
   '@lydell/node-pty@1.1.0':
     resolution: {integrity: sha512-VDD8LtlMTOrPKWMXUAcB9+LTktzuunqrMwkYR1DMRBkS6LQrCt+0/Ws1o2rMml/n3guePpS7cxhHF7Nm5K4iMw==}
+
+  '@lydell/node-pty@1.2.0-beta.12':
+    resolution: {integrity: sha512-qIK890UwPupoj07osVvgOIa++1mxeHbcGry4PKRHhNVNs81V2SCG34eJr46GybiOmBtc8Sj5PB1/GGM5PL549g==}
 
   '@modelcontextprotocol/sdk@1.29.0':
     resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
@@ -510,6 +546,25 @@ packages:
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
+
+  '@tencent-ai/codebuddy-code@2.108.2':
+    resolution: {integrity: sha512-qu2izMDGbeF0lD7Gz/ZCh4HuwEFSomq2n1jDbD0UXK/sgMxPrXXKVNnhSDqPY5V7Jk4eGlkJWFA7Drc6+AFQ7Q==}
+    hasBin: true
+
+  '@tencent-ai/sandbox-cli-darwin-arm64@5.2.3':
+    resolution: {integrity: sha512-ad5MnKMC3fUYHUClD3JRIutwIlehY9V/0fPcj5pZ2VCQhG7CUiFpKEigAUiG3eOaDtrFwj9IfQjg9DfClj5bPQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tencent-ai/sandbox-cli-darwin-x64@5.2.3':
+    resolution: {integrity: sha512-dVps5LLcX7unK2JbAfu2qUsjlbGy84WBGEBE0mYExng2feSlDC5C8Q65M0eDBrX5Mcd5JuMi3vYVBIFQBZySKw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@tencent-ai/sandbox-cli-win32-x64@5.2.1':
+    resolution: {integrity: sha512-1uTQWpOiGpunIXqkfDAPduzGgGBEGyCMCs5CveF0P3t/6iH1ovazqglZyxVA0d0KTF3wss+uIwEphFrfWaH/gA==}
+    cpu: [x64]
+    os: [win32]
 
   '@types/cross-spawn@6.0.6':
     resolution: {integrity: sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA==}
@@ -2189,19 +2244,37 @@ snapshots:
   '@lydell/node-pty-darwin-arm64@1.1.0':
     optional: true
 
+  '@lydell/node-pty-darwin-arm64@1.2.0-beta.12':
+    optional: true
+
   '@lydell/node-pty-darwin-x64@1.1.0':
+    optional: true
+
+  '@lydell/node-pty-darwin-x64@1.2.0-beta.12':
     optional: true
 
   '@lydell/node-pty-linux-arm64@1.1.0':
     optional: true
 
+  '@lydell/node-pty-linux-arm64@1.2.0-beta.12':
+    optional: true
+
   '@lydell/node-pty-linux-x64@1.1.0':
+    optional: true
+
+  '@lydell/node-pty-linux-x64@1.2.0-beta.12':
     optional: true
 
   '@lydell/node-pty-win32-arm64@1.1.0':
     optional: true
 
+  '@lydell/node-pty-win32-arm64@1.2.0-beta.12':
+    optional: true
+
   '@lydell/node-pty-win32-x64@1.1.0':
+    optional: true
+
+  '@lydell/node-pty-win32-x64@1.2.0-beta.12':
     optional: true
 
   '@lydell/node-pty@1.1.0':
@@ -2212,6 +2285,16 @@ snapshots:
       '@lydell/node-pty-linux-x64': 1.1.0
       '@lydell/node-pty-win32-arm64': 1.1.0
       '@lydell/node-pty-win32-x64': 1.1.0
+    optional: true
+
+  '@lydell/node-pty@1.2.0-beta.12':
+    optionalDependencies:
+      '@lydell/node-pty-darwin-arm64': 1.2.0-beta.12
+      '@lydell/node-pty-darwin-x64': 1.2.0-beta.12
+      '@lydell/node-pty-linux-arm64': 1.2.0-beta.12
+      '@lydell/node-pty-linux-x64': 1.2.0-beta.12
+      '@lydell/node-pty-win32-arm64': 1.2.0-beta.12
+      '@lydell/node-pty-win32-x64': 1.2.0-beta.12
     optional: true
 
   '@modelcontextprotocol/sdk@1.29.0(zod@4.4.3)':
@@ -2248,6 +2331,27 @@ snapshots:
   '@simple-libs/stream-utils@1.2.0': {}
 
   '@stablelib/base64@1.0.1': {}
+
+  '@tencent-ai/codebuddy-code@2.108.2':
+    optionalDependencies:
+      '@lydell/node-pty': 1.2.0-beta.12
+      '@lydell/node-pty-darwin-arm64': 1.2.0-beta.12
+      '@lydell/node-pty-darwin-x64': 1.2.0-beta.12
+      '@lydell/node-pty-linux-x64': 1.2.0-beta.12
+      '@lydell/node-pty-win32-arm64': 1.2.0-beta.12
+      '@lydell/node-pty-win32-x64': 1.2.0-beta.12
+      '@tencent-ai/sandbox-cli-darwin-arm64': 5.2.3
+      '@tencent-ai/sandbox-cli-darwin-x64': 5.2.3
+      '@tencent-ai/sandbox-cli-win32-x64': 5.2.1
+
+  '@tencent-ai/sandbox-cli-darwin-arm64@5.2.3':
+    optional: true
+
+  '@tencent-ai/sandbox-cli-darwin-x64@5.2.3':
+    optional: true
+
+  '@tencent-ai/sandbox-cli-win32-x64@5.2.1':
+    optional: true
 
   '@types/cross-spawn@6.0.6':
     dependencies:

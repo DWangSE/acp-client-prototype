@@ -3,7 +3,6 @@
 [![EN](https://img.shields.io/badge/Language-English-blue.svg)](README.md)
 [![ZH](https://img.shields.io/badge/Language-中文-red.svg)](README.zh.md)
 
-
 # Universal ACP Client
 
 A modular and extensible ACP (Agent Client Protocol) client library designed to connect standard AI coding agents (Gemini, Claude, Codex) and TUI-based tools (Aider) to upper-layer systems.
@@ -24,17 +23,20 @@ Powered by `@agentclientprotocol/sdk`.
 ## Quick Start
 
 ### 1. Install dependencies
+
 ```bash
 npm install
 ```
 
 ### 2. Configure credentials
+
 ```bash
 cp .env.example .env
 # Edit .env with your API keys (e.g., GEMINI_API_KEY)
 ```
 
 ### 3. Run Separated Integration Test
+
 ```bash
 npm run hello -- gemini "Hello World"
 ```
@@ -51,11 +53,11 @@ Instead of configuring child connections manually, use the `AcpClientBuilder` to
 import { AcpClientBuilder } from "acp-client-prototype";
 
 const builder = new AcpClientBuilder()
-  .withAgent("gemini")                         // Select agent adapter
-  .withVerbose(true)                           // Enable verbose debug logging
-  .withAutoApprove(true)                       // Auto-approve agent tool execution
-  .withSandboxDir("/sandbox")                  // Enforce FileSystem sandboxing
-  .withExtensionConfig("extensions.yaml")      // Load custom client methods
+  .withAgent("gemini") // Select agent adapter
+  .withVerbose(true) // Enable verbose debug logging
+  .withAutoApprove(true) // Auto-approve agent tool execution
+  .withSandboxDir("/sandbox") // Enforce FileSystem sandboxing
+  .withExtensionConfig("extensions.yaml") // Load custom client methods
   .registerExtensionHandler("custom/greet", new MyCustomHandler());
 
 const client = builder.build();
@@ -70,6 +72,7 @@ The client exposes standard execution states and functions as a unified I/O chan
 #### Connection & Turn States (`ClientState`)
 
 The client transitions through the following states, queryable via `client.getState()`:
+
 - `disconnected`: The child agent process has not been spawned.
 - `initializing`: The process is spawned and waiting for initialize shake-hands.
 - `authenticated`: The client has resolved and executed the appropriate credential strategy.
@@ -83,16 +86,16 @@ The `AcpClient` class extends Node's `EventEmitter` with **strictly typed method
 
 Below is the complete registry of typed events emitted by the client:
 
-| Event Name | Parameter Type | Description |
-|------------|----------------|-------------|
-| `stateChange` | `(newState: ClientState, oldState: ClientState)` | Triggered on any connection or execution state transition. |
-| `event` | `(event: ConnectionEvent)` | Raw, unmodified wrapper for any packet coming from the connection. |
-| `agent_message_chunk` | `(payload: any)` | Live textual answer tokens streamed from the Agent. |
-| `agent_thought_chunk` | `(payload: any)` | Live thinking process tokens streamed from reasoning-capable Agents. |
-| `tool_call` | `(payload: any)` | Signals that the Agent wants to invoke a specific client/client method/tool. |
-| `tool_call_update` | `(payload: any)` | Signals the execution result status of a requested tool call. |
-| `stderr` | `(payload: any)` | Raw standard error diagnostics emitted by the underlying Agent process. |
-| `permission_request` | `(payload: any)` | Raised when an Agent requests permission to run interactive commands. |
+| Event Name            | Parameter Type                                   | Description                                                                  |
+| --------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `stateChange`         | `(newState: ClientState, oldState: ClientState)` | Triggered on any connection or execution state transition.                   |
+| `event`               | `(event: ConnectionEvent)`                       | Raw, unmodified wrapper for any packet coming from the connection.           |
+| `agent_message_chunk` | `(payload: any)`                                 | Live textual answer tokens streamed from the Agent.                          |
+| `agent_thought_chunk` | `(payload: any)`                                 | Live thinking process tokens streamed from reasoning-capable Agents.         |
+| `tool_call`           | `(payload: any)`                                 | Signals that the Agent wants to invoke a specific client/client method/tool. |
+| `tool_call_update`    | `(payload: any)`                                 | Signals the execution result status of a requested tool call.                |
+| `stderr`              | `(payload: any)`                                 | Raw standard error diagnostics emitted by the underlying Agent process.      |
+| `permission_request`  | `(payload: any)`                                 | Raised when an Agent requests permission to run interactive commands.        |
 
 ```typescript
 // Strict autocompleted subscription
@@ -102,7 +105,9 @@ client.on("stateChange", (newState, oldState) => {
 ```
 
 #### Connecting to Sub-Streams (I/O Outlet)
+
 Upper layers can subscribe directly to specific stream events rather than parsing raw text:
+
 ```typescript
 // Streamed text response chunks from the Agent
 client.on("agent_message_chunk", (payload) => {
@@ -127,6 +132,7 @@ client.on("tool_call", (payload) => {
 You can easily extend client capabilities without altering the core codebase. This is done by specifying a configuration file and registering a corresponding handler.
 
 #### 1. Define Method Descriptions (`extensions.yaml`)
+
 ```yaml
 methods:
   - name: "custom/greet"
@@ -137,15 +143,17 @@ methods:
 ```
 
 #### 2. Implement the Handler (`ClientMethodHandler`)
+
 Write a custom class implementing `ClientMethodHandler`:
+
 ```typescript
 import { ClientMethodHandler } from "acp-client-prototype";
 
 class MyCustomHandler implements ClientMethodHandler {
   async handle(method: string, params: any): Promise<any> {
     if (method === "custom/greet") {
-      return { 
-        greeting: `Hello ${params.name || "User"}, styled using: ${params.style || "plain"}` 
+      return {
+        greeting: `Hello ${params.name || "User"}, styled using: ${params.style || "plain"}`,
       };
     }
     throw new Error(`Unsupported custom method: ${method}`);
@@ -154,28 +162,32 @@ class MyCustomHandler implements ClientMethodHandler {
 ```
 
 #### 3. Register Custom Capabilities
+
 ```typescript
 const builder = new AcpClientBuilder()
   .withAgent("gemini")
   .withExtensionConfig("extensions.yaml")
   .registerExtensionHandler("custom/greet", new MyCustomHandler());
 ```
+
 During client initialization, custom capabilities are packed and sent inside `clientCapabilities.experimental`, telling the AI Agent how to invoke these new capabilities.
 
 ---
 
 ## Supported Adapters
 
-| Agent | Connection | Auth Strategy | Description |
-|-------|------------|--------------|-------------|
-| **gemini** | `acp` | `env-auto` | Google Gemini via `gemini-cli` |
-| **claude** | `acp` | `none` | Anthropic Claude via `claude-agent-acp` |
-| **codex** | `acp` | `none` | OpenAI Codex via `codex-acp` |
-| **aider** | `pty` | `pre-configured` | AI coding assistant via PTY fallback |
+| Agent         | Connection | Auth Strategy    | Description                             |
+| ------------- | ---------- | ---------------- | --------------------------------------- |
+| **gemini**    | `acp`      | `env-auto`       | Google Gemini via `gemini-cli`          |
+| **claude**    | `acp`      | `none`           | Anthropic Claude via `claude-agent-acp` |
+| **codex**     | `acp`      | `none`           | OpenAI Codex via `codex-acp`            |
+| **codebuddy** | `acp`      | `env-auto`       | Tencent CodeBuddy via `codebuddy-code`  |
+| **aider**     | `pty`      | `pre-configured` | AI coding assistant via PTY fallback    |
 
 ---
 
 ## Workspace Layout
+
 ```
 src/
 ├── adapter/          # Agent definitions, quirks, & extensible registry
@@ -197,9 +209,11 @@ tests/
 ### 4. Direction A Driver Contract Wrapper (`src/driver/`)
 
 To support end-to-end multi-agent BCD pipelines, the micro-level `AcpClient` is wrapped inside the `MockDriver` adapter which implements `DriverRuntimeHandle` (from Direction C contract):
+
 - **`sendPrompt(input: DriverPrompt): Promise<DriverRunResult>`**: High-level execution envelope returning structured patch artifacts and audit logs compatible with SQLite states.
 
 To run the standalone driver test suite:
+
 ```bash
 npm run build && npm run build:test && node dist/tests/driver.test.js
 ```
@@ -210,13 +224,13 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 
 ## Advanced Environment Configurations
 
-| Variable | Description |
-|----------|-------------|
-| `VERBOSE=1` | Enable detailed debug logging and state outputs |
-| `AUTO_APPROVE=1` | Automatically approve all agent filesystem & terminal requests |
-| `GEMINI_API_KEY` | API key for Gemini adapter |
-| `ANTHROPIC_API_KEY` | API key for Claude adapter |
-| `OPENAI_API_KEY` | API key for Codex/Aider |
+| Variable            | Description                                                    |
+| ------------------- | -------------------------------------------------------------- |
+| `VERBOSE=1`         | Enable detailed debug logging and state outputs                |
+| `AUTO_APPROVE=1`    | Automatically approve all agent filesystem & terminal requests |
+| `GEMINI_API_KEY`    | API key for Gemini adapter                                     |
+| `ANTHROPIC_API_KEY` | API key for Claude adapter                                     |
+| `OPENAI_API_KEY`    | API key for Codex/Aider                                        |
 
 ---
 
