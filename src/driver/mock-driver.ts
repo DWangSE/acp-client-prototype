@@ -6,6 +6,8 @@ import type {
   DriverRuntimeHandle,
   DriverRunStatus,
 } from "./interface.js";
+import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
+import { Readable, Writable } from "node:stream";
 
 export class MockDriver implements DriverRuntimeHandle {
   readonly driver_id = "mock-driver";
@@ -110,4 +112,110 @@ export class MockDriver implements DriverRuntimeHandle {
   async shutdown(): Promise<void> {
     this.initialized = false;
   }
+}
+
+export function runAcpMockServer() {
+  const writable = Writable.toWeb(process.stdout) as WritableStream<Uint8Array>;
+  const readable = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
+  const stream = ndJsonStream(writable, readable);
+
+  new AgentSideConnection((conn) => {
+    return {
+      initialize: async () => {
+        return {
+          protocolVersion: 1,
+          agentCapabilities: {
+            supports_acp_extension: false,
+            supports_structured_output: true,
+            supports_session_load: false,
+            supports_tool_events: true,
+            supports_permission_events: false,
+          },
+          agentInfo: {
+            name: "mock-driver-acp",
+            version: "1.0.0",
+          },
+          authMethods: [],
+        };
+      },
+      authenticate: async () => {
+        return {};
+      },
+      newSession: async () => {
+        return {
+          sessionId: "mock-session-id",
+        };
+      },
+      prompt: async (params: any) => {
+        const promptText = params.prompt[0]?.text || "";
+
+        try {
+          if (promptText.toLowerCase().includes("write")) {
+            const filePath = ".temp/test-write.txt";
+            const content = "Filesystem write verification token: XYZ123";
+
+            await conn.writeTextFile({
+              sessionId: params.sessionId,
+              path: filePath,
+              content: content,
+            });
+
+            return {
+              stopReason: "done",
+            };
+          } else if (promptText.toLowerCase().includes("read")) {
+            const filePath = ".temp/test-read.txt";
+            const result = await conn.readTextFile({
+              sessionId: params.sessionId,
+              path: filePath,
+            });
+
+            await conn.sessionUpdate({
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                content: {
+                  type: "text",
+                  text: result.content || "",
+                },
+              },
+            });
+
+            return {
+              stopReason: "done",
+            };
+          }
+        } catch (err: any) {
+          await conn.sessionUpdate({
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: {
+                type: "text",
+                text: `ERROR:${err.message || String(err)}`,
+              },
+            },
+          });
+        }
+
+        return {
+          stopReason: "done",
+        };
+      },
+      cancel: async () => {
+        // ignore
+      },
+    };
+  }, stream);
+}
+
+// Run ACP Mock Server if executed directly
+if (
+  typeof process !== "undefined" &&
+  (process.argv[1]?.endsWith("mock-driver.js") ||
+    process.argv[1]?.endsWith("mock-driver.ts") ||
+    process.argv.includes("--acp") ||
+    process.env.RUN_MOCK_DRIVER === "1")
+) {
+  runAcpMockServer();
 }
