@@ -2,6 +2,7 @@ import { ClientMethodHandler } from "./interface.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { PermissionDeniedError } from "../core/errors.js";
+import { RequestError } from "@agentclientprotocol/sdk";
 
 export class FileSystemHandler implements ClientMethodHandler {
   constructor(private readonly baseDir: string) {}
@@ -33,8 +34,15 @@ export class FileSystemHandler implements ClientMethodHandler {
 
   private async readFile(filePath: string) {
     const fullPath = this.resolvePath(filePath);
-    const content = await fs.readFile(fullPath, "utf-8");
-    return { content };
+    try {
+      const content = await fs.readFile(fullPath, "utf-8");
+      return { content };
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        throw RequestError.resourceNotFound(filePath);
+      }
+      throw err;
+    }
   }
 
   private async writeFile(filePath: string, content: string) {
