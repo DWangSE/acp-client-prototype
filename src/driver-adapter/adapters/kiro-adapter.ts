@@ -18,10 +18,9 @@ export class KiroAdapter extends BaseAdapter {
   override resolveCommand(): { command: string; args: string[] } {
     const resolved = super.resolveCommand();
 
-    // On Windows, if kiro-cli isn't in Node's current PATH (e.g. due to PATH propagation delays
-    // where the editor or parent shell was started before the installation),
+    // On Windows, if kiro-cli isn't in Node's current PATH
     // we attempt to resolve its standard absolute installation path.
-    if (process.platform === "win32" && resolved.command === "kiro-cli") {
+    if (resolved.command === "kiro-cli") {
       const localAppData =
         process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || "", "AppData", "Local");
       const fallbackPath = path.join(localAppData, "Kiro-Cli", "kiro-cli.exe");
