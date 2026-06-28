@@ -8,6 +8,7 @@ import { CodebuddyAdapter } from "./adapters/codebuddy-adapter.js";
 import { CopilotAdapter } from "./adapters/copilot-adapter.js";
 import { OpencodeAdapter } from "./adapters/opencode-adapter.js";
 import { GooseAdapter } from "./adapters/goose-adapter.js";
+import { KiroAdapter } from "./adapters/kiro-adapter.js";
 import { MockAdapter } from "./adapters/mock-adapter.js";
 
 class AdapterRegistry {
@@ -23,6 +24,7 @@ class AdapterRegistry {
     this.register(new CopilotAdapter());
     this.register(new OpencodeAdapter());
     this.register(new GooseAdapter());
+    this.register(new KiroAdapter());
     this.register(new MockAdapter());
   }
 

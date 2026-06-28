@@ -184,6 +184,7 @@ During client initialization, custom capabilities are packed and sent inside `cl
 | **codex**     | `acp`      | `none`           | OpenAI Codex via `codex-acp`            |
 | **opencode**  | `acp`      | `pre-configured` | OpenCode AI via `opencode-ai`           |
 | **goose**     | `acp`      | `pre-configured` | Block/Square Goose via `goose`          |
+| **kiro**      | `acp`      | `pre-configured` | AWS Kiro AI via `kiro-cli`              |
 | **codebuddy** | `acp`      | `env-auto`       | Tencent CodeBuddy via `codebuddy-code`  |
 | **aider**     | `pty`      | `pre-configured` | AI coding assistant via PTY fallback    |
 
@@ -277,4 +278,4 @@ The `.goose/` workspace folder is ignored by git to prevent secrets and diagnost
 
 - **Process Hangs**: Ensure you call `client.shutdown()` to clean up event loops and terminate child processes.
 - **Sandbox Access Denied**: The filesystem handler enforces a strict sandbox. Ensure agents are accessing paths relative to the current working directory.
-- **Goose Driver Fails (ENOENT)**: If spawning the `goose` agent fails with an `ENOENT` error, check if the native Goose CLI is installed on your local machine. Goose is a native compiled binary developed by Block and **does not** have an npm package.
+- **Goose/Kiro Driver Fails (ENOENT)**: If spawning the `goose` or `kiro` agent fails with an `ENOENT` error, check if the respective native CLI (`goose` or `kiro-cli`) is installed on your local machine. Both are natively compiled binaries and **do not** have npm packages.
