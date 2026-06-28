@@ -224,13 +224,25 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 
 ## 核心环境变量
 
-| 变量名              | 描述                                              |
-| ------------------- | ------------------------------------------------- |
-| `VERBOSE=1`         | 开启详细的调试与状态转移日志                      |
-| `AUTO_APPROVE=1`    | 自动批准所有 Agent 对文件系统、终端操作的授权请求 |
-| `GEMINI_API_KEY`    | Gemini 适配器的 API Key                           |
-| `ANTHROPIC_API_KEY` | Claude 适配器的 API Key                           |
-| `OPENAI_API_KEY`    | Codex/Aider 的 API Key                            |
+| 变量名              | 描述                                                  |
+| ------------------- | ----------------------------------------------------- |
+| `VERBOSE=1`         | 开启详细的调试与状态转移日志                          |
+| `AUTO_APPROVE=1`    | 自动批准所有 Agent 对文件系统、终端操作的授权请求     |
+| `CODEX_HOME`        | 指向自定义目录以覆盖全局 Codex 配置 (例如 `./.codex`) |
+| `GEMINI_API_KEY`    | Gemini 适配器的 API Key                               |
+| `ANTHROPIC_API_KEY` | Claude 适配器的 API Key                               |
+| `OPENAI_API_KEY`    | Codex/Aider 的 API Key                                |
+
+### OpenAI Codex 本地配置 (`CODEX_HOME`)
+
+默认情况下，OpenAI Codex 适配器 (`codex-acp`) 会读取全局的 `~/.codex/` 目录。如果你希望使用项目本地的配置（例如重写 API 端点或沙箱行为），你可以将 `CODEX_HOME` 指向一个本地文件夹：
+
+1. 将 `.env.example` 复制为 `.env` 并设置 `CODEX_HOME=./.codex`。
+2. 在项目根目录的 `.codex/` 文件夹中创建本地配置文件：
+   - 将 `.codex/config.toml.example` 复制为 `.codex/config.toml` 并根据需要进行定制。
+   - 将 `.codex/auth.json.example` 复制为 `.codex/auth.json` 并填入你的 API Key 或凭据。
+
+这些本地配置文件已添加到 `.gitignore` 中，以防止你的 API Key 和工作区特定配置被误提交到 Git。
 
 ---
 
