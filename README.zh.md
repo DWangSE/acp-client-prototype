@@ -183,6 +183,7 @@ const builder = new AcpClientBuilder()
 | **copilot**   | `acp`    | `none`           | 通过 `@github/copilot` 连接 GitHub Copilot    |
 | **codex**     | `acp`    | `none`           | 通过 `codex-acp` 连接 OpenAI Codex            |
 | **opencode**  | `acp`    | `pre-configured` | 通过 `opencode-ai` 连接 OpenCode AI           |
+| **goose**     | `acp`    | `pre-configured` | 通过 `goose` 连接 Block/Square Goose AI       |
 | **codebuddy** | `acp`    | `env-auto`       | 通过 `codebuddy-code` 连接腾讯 CodeBuddy      |
 | **aider**     | `pty`    | `pre-configured` | 通过 PTY 伪终端兜底连接 AI 编码助手 Aider     |
 
@@ -232,6 +233,7 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 | `AUTO_APPROVE=1`       | 自动批准所有 Agent 对文件系统、终端操作的授权请求                          |
 | `CODEX_HOME`           | 指向自定义目录以覆盖全局 Codex 配置 (例如 `./.codex`)                      |
 | `OPENCODE_CONFIG`      | 指向自定义 JSON 配置文件以覆盖全局 OpenCode 配置 (例如 `./.opencode.json`) |
+| `GOOSE_PATH_ROOT`      | 指向自定义目录以隔离/沙箱化 Goose 的配置、状态和数据目录 (例如 `./.goose`) |
 | `GEMINI_API_KEY`       | Gemini 适配器的 API Key                                                    |
 | `ANTHROPIC_API_KEY`    | Claude 适配器的 API Key                                                    |
 | `OPENAI_API_KEY`       | Codex/Aider 的 API Key                                                     |
@@ -258,9 +260,21 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 
 这个本地配置文件已添加到 `.gitignore` 中，以防止项目环境特定配置被误提交到 Git。
 
+### Goose AI 本地配置 (`GOOSE_PATH_ROOT`)
+
+默认情况下，Goose 适配器 (`goose`) 会将配置、数据和状态存存放于系统的全局共享目录中（例如 macOS 下的 `~/Library/Application Support/Block/goose/`）。为了在项目工作区内部隔离和沙箱化 Goose 的环境，你可以将 `GOOSE_PATH_ROOT` 指向本地文件夹：
+
+1. 将 `.env.example` 复制为 `.env` 并设置 `GOOSE_PATH_ROOT=./.goose`。同时推荐设置 `GOOSE_DISABLE_KEYRING=1`，强制让 Goose 将密钥保存在工作区明文文件中，而不是写入系统的全局安全密钥链。
+2. 在终端运行 `goose configure`，它会自动在项目本地的 `.goose/` 目录中自动生成所有的运行文件夹与复杂的配置文件结构。
+
+由于 Goose 的 `config.yaml` 极度复杂且高度依赖平台/运行环境，**项目本身不提供配置模版**。通过本地运行 `goose configure` 可以确保 Goose 以原生方式生成 100% 正确、合法的配置文件。
+
+整个 `.goose/` 目录均已通过 `.gitignore` 自动忽略，以确保运行缓存、复杂的本地配置和密钥绝不会被提交到 Git。
+
 ---
 
 ## 故障排查
 
 - **进程挂起**: 请务必确保在业务结束时调用了 `client.shutdown()` 进而清理资源、断开底层子进程。
 - **沙箱文件访问拒绝**: 内置的 FileSystem Handler 强制推行沙箱安全策略。请确保 Agent 访问的路径均位于当前运行工作目录下。
+- **Goose 驱动运行失败 (ENOENT)**: 如果启动 `goose` 代理失败并提示 `ENOENT` 错误，请先检查您的本机上是否安装了原生 Goose CLI。Goose 是由 Block 开发的原生编译二进制工具，**没有**对应的 npm 安装包。
