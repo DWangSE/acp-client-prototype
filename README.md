@@ -183,6 +183,7 @@ During client initialization, custom capabilities are packed and sent inside `cl
 | **copilot**   | `acp`      | `none`           | GitHub Copilot via `@github/copilot`    |
 | **codex**     | `acp`      | `none`           | OpenAI Codex via `codex-acp`            |
 | **opencode**  | `acp`      | `pre-configured` | OpenCode AI via `opencode-ai`           |
+| **goose**     | `acp`      | `pre-configured` | Block/Square Goose via `goose`          |
 | **codebuddy** | `acp`      | `env-auto`       | Tencent CodeBuddy via `codebuddy-code`  |
 | **aider**     | `pty`      | `pre-configured` | AI coding assistant via PTY fallback    |
 
@@ -232,6 +233,7 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 | `AUTO_APPROVE=1`       | Automatically approve all agent filesystem & terminal requests                                   |
 | `CODEX_HOME`           | Point to a custom directory to override global Codex configuration (e.g., `./.codex`)            |
 | `OPENCODE_CONFIG`      | Point to a custom JSON configuration file to override OpenCode config (e.g., `./.opencode.json`) |
+| `GOOSE_PATH_ROOT`      | Point to a custom folder to sandbox Goose configuration, state, and data (e.g., `./.goose`)      |
 | `GEMINI_API_KEY`       | API key for Gemini adapter                                                                       |
 | `ANTHROPIC_API_KEY`    | API key for Claude adapter                                                                       |
 | `OPENAI_API_KEY`       | API key for Codex/Aider                                                                          |
@@ -258,9 +260,21 @@ By default, the OpenCode adapter (`opencode-ai`) expects its configuration in gl
 
 This local configuration file is ignored by git to prevent local environment settings from leaking.
 
+### Goose AI Local Configuration (`GOOSE_PATH_ROOT`)
+
+By default, the Goose adapter (`goose`) expects its data, state, and configuration in standard global directories like `~/Library/Application Support/Block/goose/`. You can sandbox its configuration, state, and data to your project workspace by pointing `GOOSE_PATH_ROOT` to a project-local folder:
+
+1. Copy `.env.example` to `.env` and set `GOOSE_PATH_ROOT=./.goose`. Also recommend setting `GOOSE_DISABLE_KEYRING=1` to store secrets inside your workspace plaintext configuration file instead of the OS system-wide secure keyring.
+2. Run `goose configure` in your terminal to automatically generate its complex configuration and file structures locally within the `.goose/` workspace folder.
+
+Because Goose's `config.yaml` is highly complex and platform-specific, **we do not provide a configuration template**. Setting up the local config via `goose configure` ensures that Goose generates a completely valid schema natively.
+
+The `.goose/` workspace folder is ignored by git to prevent secrets and diagnostic caches from being tracked.
+
 ---
 
 ## Troubleshooting
 
 - **Process Hangs**: Ensure you call `client.shutdown()` to clean up event loops and terminate child processes.
 - **Sandbox Access Denied**: The filesystem handler enforces a strict sandbox. Ensure agents are accessing paths relative to the current working directory.
+- **Goose Driver Fails (ENOENT)**: If spawning the `goose` agent fails with an `ENOENT` error, check if the native Goose CLI is installed on your local machine. Goose is a native compiled binary developed by Block and **does not** have an npm package.
