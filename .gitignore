@@ -159,3 +159,6 @@ standard.txt
 
 # OpenCode Local Configuration
 .opencode.json
+
+# Goose Local Configuration
+.goose/
