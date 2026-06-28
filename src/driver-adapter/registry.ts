@@ -6,6 +6,7 @@ import { CodexAdapter } from "./adapters/codex-adapter.js";
 import { KimiAdapter } from "./adapters/kimi-adapter.js";
 import { CodebuddyAdapter } from "./adapters/codebuddy-adapter.js";
 import { CopilotAdapter } from "./adapters/copilot-adapter.js";
+import { OpencodeAdapter } from "./adapters/opencode-adapter.js";
 import { MockAdapter } from "./adapters/mock-adapter.js";
 
 class AdapterRegistry {
@@ -19,6 +20,7 @@ class AdapterRegistry {
     this.register(new KimiAdapter());
     this.register(new CodebuddyAdapter());
     this.register(new CopilotAdapter());
+    this.register(new OpencodeAdapter());
     this.register(new MockAdapter());
   }
 

@@ -182,6 +182,7 @@ During client initialization, custom capabilities are packed and sent inside `cl
 | **claude**    | `acp`      | `none`           | Anthropic Claude via `claude-agent-acp` |
 | **copilot**   | `acp`      | `none`           | GitHub Copilot via `@github/copilot`    |
 | **codex**     | `acp`      | `none`           | OpenAI Codex via `codex-acp`            |
+| **opencode**  | `acp`      | `pre-configured` | OpenCode AI via `opencode-ai`           |
 | **codebuddy** | `acp`      | `env-auto`       | Tencent CodeBuddy via `codebuddy-code`  |
 | **aider**     | `pty`      | `pre-configured` | AI coding assistant via PTY fallback    |
 
@@ -225,15 +226,16 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 
 ## Advanced Environment Configurations
 
-| Variable               | Description                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------------- |
-| `VERBOSE=1`            | Enable detailed debug logging and state outputs                                       |
-| `AUTO_APPROVE=1`       | Automatically approve all agent filesystem & terminal requests                        |
-| `CODEX_HOME`           | Point to a custom directory to override global Codex configuration (e.g., `./.codex`) |
-| `GEMINI_API_KEY`       | API key for Gemini adapter                                                            |
-| `ANTHROPIC_API_KEY`    | API key for Claude adapter                                                            |
-| `OPENAI_API_KEY`       | API key for Codex/Aider                                                               |
-| `COPILOT_GITHUB_TOKEN` | GitHub Token with Copilot access for Copilot adapter (supports GH_TOKEN as fallback)  |
+| Variable               | Description                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `VERBOSE=1`            | Enable detailed debug logging and state outputs                                                  |
+| `AUTO_APPROVE=1`       | Automatically approve all agent filesystem & terminal requests                                   |
+| `CODEX_HOME`           | Point to a custom directory to override global Codex configuration (e.g., `./.codex`)            |
+| `OPENCODE_CONFIG`      | Point to a custom JSON configuration file to override OpenCode config (e.g., `./.opencode.json`) |
+| `GEMINI_API_KEY`       | API key for Gemini adapter                                                                       |
+| `ANTHROPIC_API_KEY`    | API key for Claude adapter                                                                       |
+| `OPENAI_API_KEY`       | API key for Codex/Aider                                                                          |
+| `COPILOT_GITHUB_TOKEN` | GitHub Token with Copilot access for Copilot adapter (supports GH_TOKEN as fallback)             |
 
 ### OpenAI Codex Local Configuration (`CODEX_HOME`)
 
@@ -245,6 +247,16 @@ By default, the OpenAI Codex adapter (`codex-acp`) expects its configuration in 
    - Copy `.codex/auth.json.example` to `.codex/auth.json` and enter your credentials/API keys.
 
 These local configuration files are ignored by git to protect your API keys and workspace-specific settings.
+
+### OpenCode AI Local Configuration (`OPENCODE_CONFIG`)
+
+By default, the OpenCode adapter (`opencode-ai`) expects its configuration in global directories like `~/.config/opencode/opencode.json`. You can completely override this and use a project-local configuration (e.g., to use **local Ollama models**) by pointing `OPENCODE_CONFIG` to a local JSON configuration:
+
+1. Copy `.env.example` to `.env` and set `OPENCODE_CONFIG=./.opencode.json`.
+2. Create your project-local configuration file:
+   - Copy `.opencode.json.example` to `.opencode.json` and customize your models and providers (e.g., setting up a local Ollama connection).
+
+This local configuration file is ignored by git to prevent local environment settings from leaking.
 
 ---
 
