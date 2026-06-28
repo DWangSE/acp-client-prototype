@@ -151,3 +151,8 @@ my-session.json
 # research files
 research/
 standard.txt
+
+# Codex Local Configuration
+.codex/*
+!.codex/config.toml.example
+!.codex/auth.json.example
