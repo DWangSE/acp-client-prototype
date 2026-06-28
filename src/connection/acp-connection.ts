@@ -1,7 +1,7 @@
 import { ClientSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import type { Client, SessionNotification } from "@agentclientprotocol/sdk";
 import spawn from "cross-spawn";
-import type { ChildProcess } from "node:child_process";
+import { spawnSync, type ChildProcess } from "node:child_process";
 import { EventEmitter, on } from "node:events";
 import { Readable, Writable } from "node:stream";
 import {
@@ -125,7 +125,20 @@ export class AcpConnection implements AgentConnection {
 
   async disconnect(): Promise<void> {
     if (this.process) {
-      this.process.kill();
+      const pid = this.process.pid;
+      if (process.platform === "win32" && pid) {
+        try {
+          // On Windows, killing the parent wrapper process (like npx.cmd) doesn't kill the child.
+          // We must force kill the entire process tree using taskkill.
+          spawnSync("taskkill", ["/F", "/T", "/PID", pid.toString()]);
+        } catch (e) {
+          if (this.verbose) {
+            console.error(`Failed to taskkill process tree for PID ${pid}:`, e);
+          }
+        }
+      } else {
+        this.process.kill();
+      }
       this.process = null;
     }
     this.sdkConn = null;

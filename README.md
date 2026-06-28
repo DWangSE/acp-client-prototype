@@ -224,13 +224,25 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 
 ## Advanced Environment Configurations
 
-| Variable            | Description                                                    |
-| ------------------- | -------------------------------------------------------------- |
-| `VERBOSE=1`         | Enable detailed debug logging and state outputs                |
-| `AUTO_APPROVE=1`    | Automatically approve all agent filesystem & terminal requests |
-| `GEMINI_API_KEY`    | API key for Gemini adapter                                     |
-| `ANTHROPIC_API_KEY` | API key for Claude adapter                                     |
-| `OPENAI_API_KEY`    | API key for Codex/Aider                                        |
+| Variable            | Description                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------- |
+| `VERBOSE=1`         | Enable detailed debug logging and state outputs                                       |
+| `AUTO_APPROVE=1`    | Automatically approve all agent filesystem & terminal requests                        |
+| `CODEX_HOME`        | Point to a custom directory to override global Codex configuration (e.g., `./.codex`) |
+| `GEMINI_API_KEY`    | API key for Gemini adapter                                                            |
+| `ANTHROPIC_API_KEY` | API key for Claude adapter                                                            |
+| `OPENAI_API_KEY`    | API key for Codex/Aider                                                               |
+
+### OpenAI Codex Local Configuration (`CODEX_HOME`)
+
+By default, the OpenAI Codex adapter (`codex-acp`) expects its configuration in the global `~/.codex/` directory. If you want to use a project-local configuration (e.g., to override API endpoints or sandbox behavior), you can point `CODEX_HOME` to a local folder:
+
+1. Copy `.env.example` to `.env` and set `CODEX_HOME=./.codex`.
+2. Create local configuration files inside the `.codex/` directory of your project:
+   - Copy `.codex/config.toml.example` to `.codex/config.toml` and customize it.
+   - Copy `.codex/auth.json.example` to `.codex/auth.json` and enter your credentials/API keys.
+
+These local configuration files are ignored by git to protect your API keys and workspace-specific settings.
 
 ---
 
