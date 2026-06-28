@@ -180,6 +180,7 @@ const builder = new AcpClientBuilder()
 | ------------- | -------- | ---------------- | --------------------------------------------- |
 | **gemini**    | `acp`    | `env-auto`       | 通过 `gemini-cli` 连接 Google Gemini          |
 | **claude**    | `acp`    | `none`           | 通过 `claude-agent-acp` 连接 Anthropic Claude |
+| **copilot**   | `acp`    | `none`           | 通过 `@github/copilot` 连接 GitHub Copilot    |
 | **codex**     | `acp`    | `none`           | 通过 `codex-acp` 连接 OpenAI Codex            |
 | **codebuddy** | `acp`    | `env-auto`       | 通过 `codebuddy-code` 连接腾讯 CodeBuddy      |
 | **aider**     | `pty`    | `pre-configured` | 通过 PTY 伪终端兜底连接 AI 编码助手 Aider     |
@@ -224,14 +225,15 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 
 ## 核心环境变量
 
-| 变量名              | 描述                                                  |
-| ------------------- | ----------------------------------------------------- |
-| `VERBOSE=1`         | 开启详细的调试与状态转移日志                          |
-| `AUTO_APPROVE=1`    | 自动批准所有 Agent 对文件系统、终端操作的授权请求     |
-| `CODEX_HOME`        | 指向自定义目录以覆盖全局 Codex 配置 (例如 `./.codex`) |
-| `GEMINI_API_KEY`    | Gemini 适配器的 API Key                               |
-| `ANTHROPIC_API_KEY` | Claude 适配器的 API Key                               |
-| `OPENAI_API_KEY`    | Codex/Aider 的 API Key                                |
+| 变量名                 | 描述                                                               |
+| ---------------------- | ------------------------------------------------------------------ |
+| `VERBOSE=1`            | 开启详细的调试与状态转移日志                                       |
+| `AUTO_APPROVE=1`       | 自动批准所有 Agent 对文件系统、终端操作的授权请求                  |
+| `CODEX_HOME`           | 指向自定义目录以覆盖全局 Codex 配置 (例如 `./.codex`)              |
+| `GEMINI_API_KEY`       | Gemini 适配器的 API Key                                            |
+| `ANTHROPIC_API_KEY`    | Claude 适配器的 API Key                                            |
+| `OPENAI_API_KEY`       | Codex/Aider 的 API Key                                             |
+| `COPILOT_GITHUB_TOKEN` | Copilot 适配器的 GitHub Access Token（支持使用 GH_TOKEN 作为备用） |
 
 ### OpenAI Codex 本地配置 (`CODEX_HOME`)
 
