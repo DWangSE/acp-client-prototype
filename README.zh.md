@@ -184,6 +184,7 @@ const builder = new AcpClientBuilder()
 | **codex**     | `acp`    | `none`           | 通过 `codex-acp` 连接 OpenAI Codex            |
 | **opencode**  | `acp`    | `pre-configured` | 通过 `opencode-ai` 连接 OpenCode AI           |
 | **goose**     | `acp`    | `pre-configured` | 通过 `goose` 连接 Block/Square Goose AI       |
+| **kiro**      | `acp`    | `pre-configured` | 通过 `kiro-cli` 连接 AWS Kiro AI              |
 | **codebuddy** | `acp`    | `env-auto`       | 通过 `codebuddy-code` 连接腾讯 CodeBuddy      |
 | **aider**     | `pty`    | `pre-configured` | 通过 PTY 伪终端兜底连接 AI 编码助手 Aider     |
 
@@ -277,4 +278,4 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 
 - **进程挂起**: 请务必确保在业务结束时调用了 `client.shutdown()` 进而清理资源、断开底层子进程。
 - **沙箱文件访问拒绝**: 内置的 FileSystem Handler 强制推行沙箱安全策略。请确保 Agent 访问的路径均位于当前运行工作目录下。
-- **Goose 驱动运行失败 (ENOENT)**: 如果启动 `goose` 代理失败并提示 `ENOENT` 错误，请先检查您的本机上是否安装了原生 Goose CLI。Goose 是由 Block 开发的原生编译二进制工具，**没有**对应的 npm 安装包。
+- **Goose/Kiro 驱动运行失败 (ENOENT)**: 如果启动 `goose` 或 `kiro` 代理失败并提示 `ENOENT` 错误，请先检查您的本机上是否分别安装了原生的 Goose CLI 或 Kiro CLI (`goose` 或 `kiro-cli`）。两款工具均为原生编译二进制包，**均没有**对应的 npm 安装包。
