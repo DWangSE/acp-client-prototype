@@ -180,6 +180,7 @@ During client initialization, custom capabilities are packed and sent inside `cl
 | ------------- | ---------- | ---------------- | --------------------------------------- |
 | **gemini**    | `acp`      | `env-auto`       | Google Gemini via `gemini-cli`          |
 | **claude**    | `acp`      | `none`           | Anthropic Claude via `claude-agent-acp` |
+| **copilot**   | `acp`      | `none`           | GitHub Copilot via `@github/copilot`    |
 | **codex**     | `acp`      | `none`           | OpenAI Codex via `codex-acp`            |
 | **codebuddy** | `acp`      | `env-auto`       | Tencent CodeBuddy via `codebuddy-code`  |
 | **aider**     | `pty`      | `pre-configured` | AI coding assistant via PTY fallback    |
@@ -224,14 +225,15 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 
 ## Advanced Environment Configurations
 
-| Variable            | Description                                                                           |
-| ------------------- | ------------------------------------------------------------------------------------- |
-| `VERBOSE=1`         | Enable detailed debug logging and state outputs                                       |
-| `AUTO_APPROVE=1`    | Automatically approve all agent filesystem & terminal requests                        |
-| `CODEX_HOME`        | Point to a custom directory to override global Codex configuration (e.g., `./.codex`) |
-| `GEMINI_API_KEY`    | API key for Gemini adapter                                                            |
-| `ANTHROPIC_API_KEY` | API key for Claude adapter                                                            |
-| `OPENAI_API_KEY`    | API key for Codex/Aider                                                               |
+| Variable               | Description                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| `VERBOSE=1`            | Enable detailed debug logging and state outputs                                       |
+| `AUTO_APPROVE=1`       | Automatically approve all agent filesystem & terminal requests                        |
+| `CODEX_HOME`           | Point to a custom directory to override global Codex configuration (e.g., `./.codex`) |
+| `GEMINI_API_KEY`       | API key for Gemini adapter                                                            |
+| `ANTHROPIC_API_KEY`    | API key for Claude adapter                                                            |
+| `OPENAI_API_KEY`       | API key for Codex/Aider                                                               |
+| `COPILOT_GITHUB_TOKEN` | GitHub Token with Copilot access for Copilot adapter (supports GH_TOKEN as fallback)  |
 
 ### OpenAI Codex Local Configuration (`CODEX_HOME`)
 
