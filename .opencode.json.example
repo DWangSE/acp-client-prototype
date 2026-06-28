@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "openai/gpt-4o",
+  "provider": {
+    "openai": {
+      "apiKey": "sk-your-openai-api-key"
+    },
+    "ollama": {
+      "baseURL": "http://localhost:11434"
+    }
+  },
+  "permission": {
+    "bash": "ask"
+  }
+}

@@ -156,3 +156,6 @@ standard.txt
 .codex/*
 !.codex/config.toml.example
 !.codex/auth.json.example
+
+# OpenCode Local Configuration
+.opencode.json
