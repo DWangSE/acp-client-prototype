@@ -2,7 +2,7 @@
 name: Bug
 about: 为项目报告/修复bug
 title: "[BUG]"
-labels: ''
+labels: test
 assignees: DWangSE
 
 ---
