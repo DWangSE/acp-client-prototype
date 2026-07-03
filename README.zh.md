@@ -127,9 +127,9 @@ client.on("tool_call", (payload) => {
 
 ---
 
-### 3. ACP 协议扩展 (方法扩展机制)
+### 3. 自定义方法扩展 (MCP Tool Bridge)
 
-要为 Client 增加新的方法/能力，扩展者**完全不需要修改 Client 核心代码**，只需简单 3 步：
+要为 Client 增加新的方法/能力，扩展者**完全不需要修改 Client 核心代码**。配置方法描述、注册处理器后，Client 会把这些方法暴露为 MCP tools，供 ACP Agent 发现和调用。
 
 #### 第一步：在配置文件中描述方法 (`extensions.yaml`)
 
@@ -170,7 +170,14 @@ const builder = new AcpClientBuilder()
   .registerExtensionHandler("custom/greet", new MyCustomHandler());
 ```
 
-在 Client 初始化时，这些自定义方法会自动注入到 `clientCapabilities.experimental` 中传输给 Agent，告知其本宿主客户端支持此方法的调用。
+在创建 session 时，Client 会为已配置的扩展方法启动本地 SSE MCP server，并通过 `mcpServers` 传给 Agent。Agent 通过标准 MCP `tools/list` 发现这些方法，通过 `tools/call` 调用。`clientCapabilities.experimental` 仍会作为兼容性元数据发送，但不再依赖它完成工具发现。
+
+可以用扩展方法测试验证这条链路。默认使用 `mock-driver`，也可以传入真实 Agent 标识：
+
+```bash
+pnpm extension-test
+pnpm extension-test <agent-id>
+```
 
 ---
 

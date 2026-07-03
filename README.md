@@ -127,9 +127,9 @@ client.on("tool_call", (payload) => {
 
 ---
 
-### 3. Custom Method Capabilities (Extensibility Configuration)
+### 3. Custom Method Capabilities (MCP Tool Bridge)
 
-You can easily extend client capabilities without altering the core codebase. This is done by specifying a configuration file and registering a corresponding handler.
+You can extend client capabilities without altering the core codebase. Define the custom method in a configuration file, register a handler, and the client exposes it to ACP agents as an MCP tool.
 
 #### 1. Define Method Descriptions (`extensions.yaml`)
 
@@ -170,7 +170,14 @@ const builder = new AcpClientBuilder()
   .registerExtensionHandler("custom/greet", new MyCustomHandler());
 ```
 
-During client initialization, custom capabilities are packed and sent inside `clientCapabilities.experimental`, telling the AI Agent how to invoke these new capabilities.
+When a session is created, the client starts a local SSE MCP server for the configured extension methods and passes it through `mcpServers`. Agents discover these methods through standard MCP `tools/list` and invoke them through `tools/call`. The legacy `clientCapabilities.experimental` declaration is still sent as metadata, but it is not relied on for tool discovery.
+
+To verify this path, run the extension method test. It uses `mock-driver` by default and accepts a real agent id when needed:
+
+```bash
+pnpm extension-test
+pnpm extension-test <agent-id>
+```
 
 ---
 
