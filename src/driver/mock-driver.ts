@@ -7,7 +7,35 @@ import type {
   DriverRunStatus,
 } from "./interface.js";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
+import http from "node:http";
 import { Readable, Writable } from "node:stream";
+import type { McpServerConfig } from "../core/types.js";
+
+interface JsonRpcRequest {
+  jsonrpc: "2.0";
+  id?: number | string;
+  method: string;
+  params?: any;
+}
+
+interface JsonRpcResponse {
+  jsonrpc: "2.0";
+  id?: number | string;
+  result?: any;
+  error?: { code: number; message: string; data?: any };
+}
+
+interface MockSession {
+  sessionId: string;
+  mcpServers: McpServerConfig[];
+}
+
+interface SseMcpServerConfig {
+  name: string;
+  type: "sse";
+  url: string;
+  headers: Array<{ name: string; value: string }>;
+}
 
 export class MockDriver implements DriverRuntimeHandle {
   readonly driver_id = "mock-driver";
@@ -114,12 +142,164 @@ export class MockDriver implements DriverRuntimeHandle {
   }
 }
 
+function extractQuotedValue(text: string, key: string): string | undefined {
+  const match = text.match(new RegExp(`${key}="([^"]+)"`));
+  return match?.[1];
+}
+
+function isSseMcpServer(server: McpServerConfig): server is SseMcpServerConfig {
+  return "type" in server && server.type === "sse";
+}
+
+function parseSseEvent(chunk: string): { event?: string; data?: string } {
+  const event: { event?: string; data?: string } = {};
+  for (const line of chunk.split(/\r?\n/)) {
+    if (line.startsWith("event:")) event.event = line.slice("event:".length).trim();
+    if (line.startsWith("data:")) event.data = line.slice("data:".length).trim();
+  }
+  return event;
+}
+
+function waitForSseMessage(
+  response: NodeJS.ReadableStream,
+  predicate: (event: { event?: string; data?: string }) => boolean
+): Promise<{ event?: string; data?: string }> {
+  return new Promise((resolve) => {
+    let buffer = "";
+    const onData = (chunk: Buffer | string) => {
+      buffer += chunk.toString();
+
+      let separatorIndex = buffer.indexOf("\n\n");
+      while (separatorIndex >= 0) {
+        const rawEvent = buffer.slice(0, separatorIndex);
+        buffer = buffer.slice(separatorIndex + 2);
+        const event = parseSseEvent(rawEvent);
+        if (predicate(event)) {
+          response.off("data", onData);
+          resolve(event);
+          return;
+        }
+        separatorIndex = buffer.indexOf("\n\n");
+      }
+    };
+
+    response.on("data", onData);
+  });
+}
+
+function postJson(url: URL, request: JsonRpcRequest): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(request);
+    const req = http.request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: `${url.pathname}${url.search}`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        res.resume();
+        res.on("end", resolve);
+      }
+    );
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+function openSse(url: URL): Promise<http.IncomingMessage> {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, (res) => resolve(res));
+    req.on("error", reject);
+  });
+}
+
+async function sendMcpRequest(
+  sseResponse: http.IncomingMessage,
+  messageUrl: URL,
+  request: JsonRpcRequest
+): Promise<JsonRpcResponse> {
+  const responsePromise = waitForSseMessage(
+    sseResponse,
+    (event) => event.event === "message" && !!event.data
+  );
+
+  await postJson(messageUrl, request);
+
+  const responseEvent = await responsePromise;
+  return JSON.parse(responseEvent.data || "{}") as JsonRpcResponse;
+}
+
+async function callSseMcpTool(
+  server: SseMcpServerConfig,
+  toolName: string,
+  args: Record<string, unknown>
+): Promise<unknown> {
+  const sseUrl = new URL(server.url);
+  const sseResponse = await openSse(sseUrl);
+
+  try {
+    const endpointEvent = await waitForSseMessage(
+      sseResponse,
+      (event) => event.event === "endpoint" && !!event.data
+    );
+    const messageUrl = new URL(endpointEvent.data || "", sseUrl);
+
+    await sendMcpRequest(sseResponse, messageUrl, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "mock-driver-acp", version: "1.0.0" },
+      },
+    });
+
+    const listResponse = await sendMcpRequest(sseResponse, messageUrl, {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/list",
+      params: {},
+    });
+
+    if (listResponse.error) throw new Error(listResponse.error.message);
+
+    const tools = listResponse.result?.tools || [];
+    if (!tools.some((tool: any) => tool.name === toolName)) {
+      throw new Error(`MCP tool not found: ${toolName}`);
+    }
+
+    const callResponse = await sendMcpRequest(sseResponse, messageUrl, {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: {
+        name: toolName,
+        arguments: args,
+      },
+    });
+
+    if (callResponse.error) throw new Error(callResponse.error.message);
+    return callResponse.result;
+  } finally {
+    sseResponse.destroy();
+  }
+}
+
 export function runAcpMockServer() {
   const writable = Writable.toWeb(process.stdout) as WritableStream<Uint8Array>;
   const readable = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
   const stream = ndJsonStream(writable, readable);
 
   new AgentSideConnection((conn) => {
+    const sessions = new Map<string, MockSession>();
+
     return {
       initialize: async () => {
         return {
@@ -130,6 +310,10 @@ export function runAcpMockServer() {
             supports_session_load: false,
             supports_tool_events: true,
             supports_permission_events: false,
+            mcpCapabilities: {
+              sse: true,
+              http: false,
+            },
           },
           agentInfo: {
             name: "mock-driver-acp",
@@ -141,16 +325,57 @@ export function runAcpMockServer() {
       authenticate: async () => {
         return {};
       },
-      newSession: async () => {
+      newSession: async (params: any) => {
+        const sessionId = "mock-session-id";
+        sessions.set(sessionId, {
+          sessionId,
+          mcpServers: params.mcpServers || [],
+        });
+
         return {
-          sessionId: "mock-session-id",
+          sessionId,
         };
       },
       prompt: async (params: any) => {
         const promptText = params.prompt[0]?.text || "";
 
         try {
-          if (promptText.toLowerCase().includes("write")) {
+          if (promptText.includes("call_success")) {
+            const session = sessions.get(params.sessionId);
+            const sseServer = session?.mcpServers.find(isSseMcpServer);
+            if (!sseServer) throw new Error("No SSE MCP server configured for call_success");
+
+            const token = extractQuotedValue(promptText, "token");
+            if (!token) throw new Error("call_success prompt did not include token");
+
+            await conn.sessionUpdate({
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "tool_call",
+                toolCallId: "mock-call-success",
+                title: "call_success",
+                kind: "other",
+                status: "pending",
+                rawInput: { token },
+              },
+            });
+
+            const result = await callSseMcpTool(sseServer, "call_success", { token });
+
+            await conn.sessionUpdate({
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "tool_call_update",
+                toolCallId: "mock-call-success",
+                status: "completed",
+                rawOutput: result,
+              },
+            });
+
+            return {
+              stopReason: "done",
+            };
+          } else if (promptText.toLowerCase().includes("write")) {
             const filePath = ".temp/test-write.txt";
             const content = "Filesystem write verification token: XYZ123";
 
