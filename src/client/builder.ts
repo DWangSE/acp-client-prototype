@@ -10,7 +10,7 @@ import { FileSystemHandler } from "../client-methods/filesystem-handler.js";
 import { PermissionHandler } from "../client-methods/permission-handler.js";
 import { TerminalHandler } from "../client-methods/terminal-handler.js";
 import { ClientMethodHandler } from "../client-methods/interface.js";
-import { loadExtensionConfig } from "../client-methods/extension-loader.js";
+import { ExtensionMethod, loadExtensionConfig } from "../client-methods/extension-loader.js";
 
 export class AcpClientBuilder {
   private agentId?: string;
@@ -86,9 +86,11 @@ export class AcpClientBuilder {
 
     // Load extensions config if present
     const experimentalCapabilities: Record<string, any> = {};
+    const extensionMethods: ExtensionMethod[] = [];
     if (this.extensionConfigPath) {
       try {
         const methods = loadExtensionConfig(this.extensionConfigPath);
+        extensionMethods.push(...methods);
         for (const m of methods) {
           experimentalCapabilities[m.name] = {
             description: m.description,
@@ -114,6 +116,7 @@ export class AcpClientBuilder {
       interceptors: this.interceptors,
       verbose: this.verbose,
       experimentalCapabilities,
+      extensionMethods,
     };
 
     return new AcpClient(options);

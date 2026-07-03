@@ -7,7 +7,9 @@ import { ClientMethodRouter } from "../client-methods/router.js";
 import { ClientInterceptors, HookPoint } from "../hook-gate/interface.js";
 import { SessionError } from "../core/errors.js";
 import type { InitializeResult } from "../connection/interface.js";
-import type { ClientCapabilities } from "../core/types.js";
+import type { ClientCapabilities, McpServerConfig } from "../core/types.js";
+import type { ExtensionMethod } from "../client-methods/extension-loader.js";
+import { ExtensionMcpServer } from "../client-methods/extension-mcp-server.js";
 
 export type ClientState =
   | "disconnected"
@@ -26,6 +28,7 @@ export interface AcpClientOptions {
   interceptors?: ClientInterceptors;
   verbose?: boolean;
   experimentalCapabilities?: Record<string, any>;
+  extensionMethods?: ExtensionMethod[];
 }
 
 export class AcpClient extends EventEmitter {
@@ -37,6 +40,8 @@ export class AcpClient extends EventEmitter {
   private interceptors?: ClientInterceptors;
   private verbose: boolean;
   private experimentalCapabilities?: Record<string, any>;
+  private extensionMethods: ExtensionMethod[];
+  private extensionMcpServer: ExtensionMcpServer | null = null;
 
   private initialized = false;
   private authenticated = false;
@@ -56,6 +61,7 @@ export class AcpClient extends EventEmitter {
     this.interceptors = options.interceptors;
     this.verbose = options.verbose ?? false;
     this.experimentalCapabilities = options.experimentalCapabilities;
+    this.extensionMethods = options.extensionMethods ?? [];
 
     // Connect the router to the connection
     this.connection.setMethodRouter(this.methodRouter);
@@ -197,9 +203,7 @@ export class AcpClient extends EventEmitter {
   private setupEventForwarding(signal: AbortSignal) {
     (async () => {
       try {
-        for await (const event of this.connection.onEvent()) {
-          if (signal.aborted) break;
-
+        for await (const event of this.connection.onEvent(signal)) {
           // Apply output interceptor callback
           let finalEvent = event;
           if (this.interceptors?.output) {
@@ -246,14 +250,18 @@ export class AcpClient extends EventEmitter {
     this.emit("post:authenticate", { point: "post:authenticate", agentId });
   }
 
-  async createSession(cwd: string): Promise<SessionInfo> {
+  async createSession(cwd: string, mcpServers: McpServerConfig[] = []): Promise<SessionInfo> {
     this.ensureInitialized();
     if (!this.authenticated) await this.authenticate();
 
     const agentId = this.adapter.agentId;
     this.emit("pre:session:create", { point: "pre:session:create", agentId, data: { cwd } });
 
-    const sessionRecord = await this.connection.createSession(cwd);
+    const extensionMcpServers = await this.getExtensionMcpServers();
+    const sessionRecord = await this.connection.createSession(cwd, [
+      ...mcpServers,
+      ...extensionMcpServers,
+    ]);
     this.currentSession = {
       sessionId: sessionRecord.sessionId,
       cwd,
@@ -325,7 +333,14 @@ export class AcpClient extends EventEmitter {
     const agentId = this.adapter.agentId;
     this.abortController?.abort();
     this.emit("pre:disconnect", { point: "pre:disconnect", agentId });
-    await this.connection.disconnect();
+    try {
+      await this.connection.disconnect();
+    } finally {
+      if (this.extensionMcpServer) {
+        await this.extensionMcpServer.stop();
+        this.extensionMcpServer = null;
+      }
+    }
     this.emit("post:disconnect", { point: "post:disconnect", agentId });
     this.initialized = false;
     this.authenticated = false;
@@ -336,5 +351,25 @@ export class AcpClient extends EventEmitter {
 
   private ensureInitialized() {
     if (!this.initialized) throw new Error("Client not initialized");
+  }
+
+  private async getExtensionMcpServers(): Promise<McpServerConfig[]> {
+    if (this.extensionMethods.length === 0) return [];
+
+    if (!this.extensionMcpServer) {
+      this.extensionMcpServer = new ExtensionMcpServer(this.extensionMethods, (method, args) =>
+        this.methodRouter.route(method, args)
+      );
+    }
+
+    const url = await this.extensionMcpServer.start();
+    return [
+      {
+        name: "acp-client-extension-methods",
+        type: "sse",
+        url,
+        headers: [],
+      },
+    ];
   }
 }
