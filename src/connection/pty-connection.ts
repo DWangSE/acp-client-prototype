@@ -9,7 +9,7 @@ import {
   TurnController,
 } from "./interface.js";
 import { PtyError } from "../core/errors.js";
-import type { ClientCapabilities } from "../core/types.js";
+import type { ClientCapabilities, McpServerConfig } from "../core/types.js";
 
 export class PtyConnection implements AgentConnection {
   readonly type = "pty";
@@ -76,7 +76,7 @@ export class PtyConnection implements AgentConnection {
     // PTY typically uses env vars for auth
   }
 
-  async createSession(_cwd: string): Promise<SessionRecord> {
+  async createSession(_cwd: string, _mcpServers?: McpServerConfig[]): Promise<SessionRecord> {
     return { sessionId: "pty_session" };
   }
 
@@ -101,9 +101,14 @@ export class PtyConnection implements AgentConnection {
     this.ptyProcess?.write("\x03");
   }
 
-  async *onEvent(): AsyncIterable<ConnectionEvent> {
-    for await (const [event] of on(this.eventEmitter, "event")) {
-      yield event as ConnectionEvent;
+  async *onEvent(signal?: AbortSignal): AsyncIterable<ConnectionEvent> {
+    try {
+      for await (const [event] of on(this.eventEmitter, "event", { signal })) {
+        yield event as ConnectionEvent;
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      throw err;
     }
   }
 }

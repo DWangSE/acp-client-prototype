@@ -13,7 +13,7 @@ import {
   TurnController,
 } from "./interface.js";
 import { AgentSpawnError, TransportError } from "../core/errors.js";
-import type { ClientCapabilities } from "../core/types.js";
+import type { ClientCapabilities, McpServerConfig } from "../core/types.js";
 
 export class AcpConnection implements AgentConnection {
   readonly type = "acp";
@@ -104,6 +104,11 @@ export class AcpConnection implements AgentConnection {
         this.emitEvent("terminal/create" as any, params);
         return { terminalId: "term_stub" };
       },
+      extMethod: async (method: string, params: Record<string, unknown>) => {
+        if (this.methodRouter) return await this.methodRouter.route(method, params);
+        this.emitEvent(method as any, params);
+        return {};
+      },
     };
 
     this.sdkConn = new ClientSideConnection(() => clientImpl, stream);
@@ -158,9 +163,9 @@ export class AcpConnection implements AgentConnection {
     await this.sdkConn.authenticate({ methodId, authMethod });
   }
 
-  async createSession(cwd: string): Promise<SessionRecord> {
+  async createSession(cwd: string, mcpServers: McpServerConfig[] = []): Promise<SessionRecord> {
     if (!this.sdkConn) throw new TransportError("Not connected");
-    const resp = await this.sdkConn.newSession({ cwd, mcpServers: [] });
+    const resp = await this.sdkConn.newSession({ cwd, mcpServers });
     return { sessionId: resp.sessionId };
   }
 
@@ -180,9 +185,14 @@ export class AcpConnection implements AgentConnection {
     await this.sdkConn.cancel({ sessionId });
   }
 
-  async *onEvent(): AsyncIterable<ConnectionEvent> {
-    for await (const [event] of on(this.eventEmitter, "event")) {
-      yield event as ConnectionEvent;
+  async *onEvent(signal?: AbortSignal): AsyncIterable<ConnectionEvent> {
+    try {
+      for await (const [event] of on(this.eventEmitter, "event", { signal })) {
+        yield event as ConnectionEvent;
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      throw err;
     }
   }
 }
