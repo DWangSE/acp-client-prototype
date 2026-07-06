@@ -1,0 +1,428 @@
+#!/usr/bin/env node
+import dotenv from "dotenv";
+dotenv.config();
+
+import { resolve } from "node:path";
+import { AcpClientBuilder } from "../client/builder.js";
+import { SCHEMA_VERSION, createId, nowTimestamp, type ArtifactRef } from "../core/types.js";
+import type { ConnectionEvent, TurnController } from "../connection/interface.js";
+import type {
+  DriverPrompt,
+  DriverRunResult,
+  DriverRunStatus,
+  DriverToolEvent,
+} from "./interface.js";
+
+interface RunOptions {
+  agentId: string;
+  workspace: string;
+}
+
+interface ResultBuildInput {
+  input?: DriverPrompt;
+  agentId: string;
+  workspace: string;
+  sessionId?: string;
+  startedAtMs: number;
+  events: ConnectionEvent[];
+  promptResult?: unknown;
+  error?: unknown;
+}
+
+async function readStdin(): Promise<string> {
+  process.stdin.setEncoding("utf8");
+  let raw = "";
+  for await (const chunk of process.stdin) {
+    raw += chunk;
+  }
+  return raw.trim();
+}
+
+function parseDriverPrompt(raw: string): DriverPrompt {
+  if (!raw) {
+    throw new Error("DriverPrompt JSON is required on stdin.");
+  }
+
+  const parsed: unknown = JSON.parse(raw);
+  if (!isRecord(parsed)) {
+    throw new Error("DriverPrompt must be a JSON object.");
+  }
+
+  for (const field of ["task_id", "run_id", "prompt"] as const) {
+    if (typeof parsed[field] !== "string" || parsed[field].length === 0) {
+      throw new Error(`DriverPrompt.${field} must be a non-empty string.`);
+    }
+  }
+
+  if (parsed.context_pack_ref !== undefined && !isRecord(parsed.context_pack_ref)) {
+    throw new Error("DriverPrompt.context_pack_ref must be an object when provided.");
+  }
+
+  return {
+    task_id: parsed.task_id as string,
+    run_id: parsed.run_id as string,
+    prompt: parsed.prompt as string,
+    context_pack_ref: parsed.context_pack_ref as DriverPrompt["context_pack_ref"],
+    created_at: typeof parsed.created_at === "string" ? parsed.created_at : nowTimestamp(),
+    schema_version:
+      typeof parsed.schema_version === "string" ? parsed.schema_version : SCHEMA_VERSION,
+  };
+}
+
+async function runContractPrompt(
+  input: DriverPrompt,
+  options: RunOptions
+): Promise<DriverRunResult> {
+  const startedAtMs = Date.now();
+  const events: ConnectionEvent[] = [];
+  let sessionId: string | undefined;
+  let client: ReturnType<AcpClientBuilder["build"]> | undefined;
+
+  try {
+    client = new AcpClientBuilder()
+      .withAgent(options.agentId)
+      .withVerbose(false)
+      .withAutoApprove(process.env.AUTO_APPROVE === "1")
+      .withSandboxDir(options.workspace)
+      .build();
+
+    await client.initialize();
+    await client.authenticate();
+
+    const session = await client.createSession(options.workspace);
+    sessionId = session.sessionId;
+
+    const turn = await client.sendPrompt(input.prompt);
+    const collectEvents = collectTurnEvents(turn, events).catch((eventError) => {
+      events.push({
+        type: "stderr",
+        payload: `event collection failed: ${errorMessage(eventError)}`,
+      });
+    });
+    const promptResult = await turn.result;
+    await collectEvents;
+
+    return buildRunResult({
+      input,
+      agentId: options.agentId,
+      workspace: options.workspace,
+      sessionId,
+      startedAtMs,
+      events,
+      promptResult,
+    });
+  } catch (error) {
+    return buildRunResult({
+      input,
+      agentId: options.agentId,
+      workspace: options.workspace,
+      sessionId,
+      startedAtMs,
+      events,
+      error,
+    });
+  } finally {
+    if (client) {
+      try {
+        await client.shutdown();
+      } catch (shutdownError) {
+        process.stderr.write(`[driver:run] shutdown failed: ${errorMessage(shutdownError)}\n`);
+      }
+    }
+  }
+}
+
+async function collectTurnEvents(turn: TurnController, events: ConnectionEvent[]): Promise<void> {
+  for await (const event of turn) {
+    events.push(event);
+  }
+}
+
+function buildRunResult(params: ResultBuildInput): DriverRunResult {
+  const createdAt = nowTimestamp();
+  const schemaVersion = params.input?.schema_version || SCHEMA_VERSION;
+  const taskId = params.input?.task_id || "unknown-task";
+  const sessionId = params.sessionId || "session-unavailable";
+  const stopReason = stopReasonFrom(params.promptResult);
+  const status = mapRunStatus(stopReason, params.error);
+  const error = buildDriverError(status, stopReason, params.error);
+  const transcriptStats = summarizeTranscript(params.events);
+
+  return {
+    driver_run_result_id: createId("driver_result"),
+    session_id: sessionId,
+    status,
+    artifacts: collectArtifactRefs(params.events, params.agentId, taskId, createdAt, schemaVersion),
+    transcript_ref: {
+      artifact_id: createId("artifact"),
+      type: "transcript",
+      uri: `artifact://transcript/${encodeURIComponent(taskId)}/${encodeURIComponent(sessionId)}`,
+      producer_id: params.agentId,
+      task_id: taskId,
+      metadata: {
+        workspace: params.workspace,
+        event_count: params.events.length,
+        agent_message_chars: transcriptStats.agentMessageChars,
+        agent_thought_chars: transcriptStats.agentThoughtChars,
+        stderr_chars: transcriptStats.stderrChars,
+        stop_reason: stopReason || null,
+      },
+      created_at: createdAt,
+      schema_version: schemaVersion,
+    },
+    tool_events: collectToolEvents(params.events, createdAt, schemaVersion),
+    diagnostics: {
+      driver_id: params.agentId,
+      duration_ms: Math.max(0, Date.now() - params.startedAtMs),
+      notes: buildDiagnosticNotes(params, stopReason),
+    },
+    ...(error ? { error } : {}),
+    created_at: createdAt,
+    schema_version: schemaVersion,
+  };
+}
+
+function collectToolEvents(
+  events: ConnectionEvent[],
+  createdAt: string,
+  schemaVersion: string
+): DriverToolEvent[] {
+  const byId = new Map<string, DriverToolEvent>();
+
+  for (const event of events) {
+    if (event.type === "tool_call") {
+      const update = updateRecord(event);
+      const id = stringValue(update.toolCallId) || createId("tool_event");
+      byId.set(id, {
+        tool_event_id: id,
+        tool_name: stringValue(update.kind) || stringValue(update.title) || "tool_call",
+        status: normalizeToolStatus(update.status),
+        summary: stringValue(update.title) || "ACP tool call started.",
+        created_at: createdAt,
+        schema_version: schemaVersion,
+      });
+    }
+
+    if (event.type === "tool_call_update") {
+      const update = updateRecord(event);
+      const id = stringValue(update.toolCallId) || createId("tool_event");
+      const existing = byId.get(id);
+      byId.set(id, {
+        tool_event_id: id,
+        tool_name: existing?.tool_name || "tool_call",
+        status: normalizeToolStatus(update.status),
+        summary: summarizeToolUpdate(update, existing),
+        created_at: existing?.created_at || createdAt,
+        schema_version: schemaVersion,
+      });
+    }
+
+    if (event.type === "permission_request") {
+      const payload = payloadRecord(event);
+      const id = stringValue(payload.requestId) || createId("tool_event");
+      byId.set(id, {
+        tool_event_id: id,
+        tool_name: "permission_request",
+        status: "pending",
+        summary: stringValue(payload.title) || "ACP permission request.",
+        created_at: createdAt,
+        schema_version: schemaVersion,
+      });
+    }
+  }
+
+  return [...byId.values()];
+}
+
+function collectArtifactRefs(
+  events: ConnectionEvent[],
+  agentId: string,
+  taskId: string,
+  createdAt: string,
+  schemaVersion: string
+): ArtifactRef[] {
+  const artifacts: ArtifactRef[] = [];
+
+  for (const event of events) {
+    if (event.type !== "tool_call_update") continue;
+
+    const content = updateRecord(event).content;
+    if (!Array.isArray(content)) continue;
+
+    for (const item of content) {
+      if (!isRecord(item) || item.type !== "diff") continue;
+
+      const artifactId = createId("artifact");
+      const diffPath = stringValue(item.path) || "unknown.diff";
+      artifacts.push({
+        artifact_id: artifactId,
+        type: "diff",
+        uri: `artifact://diff/${encodeURIComponent(taskId)}/${encodeURIComponent(diffPath)}`,
+        producer_id: agentId,
+        task_id: taskId,
+        metadata: {
+          path: diffPath,
+          tool_call_id: stringValue(updateRecord(event).toolCallId),
+        },
+        created_at: createdAt,
+        schema_version: schemaVersion,
+      });
+    }
+  }
+
+  return artifacts;
+}
+
+function buildDiagnosticNotes(params: ResultBuildInput, stopReason?: string): string[] {
+  const notes = [
+    `agent_id=${params.agentId}`,
+    `workspace=${params.workspace}`,
+    `event_count=${params.events.length}`,
+  ];
+
+  if (params.sessionId) notes.push(`session_id=${params.sessionId}`);
+  if (stopReason) notes.push(`stop_reason=${stopReason}`);
+  if (params.error) notes.push(`error=${errorMessage(params.error)}`);
+
+  return notes;
+}
+
+function summarizeTranscript(events: ConnectionEvent[]): {
+  agentMessageChars: number;
+  agentThoughtChars: number;
+  stderrChars: number;
+} {
+  let agentMessageChars = 0;
+  let agentThoughtChars = 0;
+  let stderrChars = 0;
+
+  for (const event of events) {
+    if (event.type === "agent_message_chunk") {
+      agentMessageChars += textFromContent(updateRecord(event).content).length;
+    }
+    if (event.type === "agent_thought_chunk") {
+      agentThoughtChars += textFromContent(updateRecord(event).content).length;
+    }
+    if (event.type === "stderr") {
+      stderrChars += String(event.payload ?? "").length;
+    }
+  }
+
+  return { agentMessageChars, agentThoughtChars, stderrChars };
+}
+
+function stopReasonFrom(promptResult: unknown): string | undefined {
+  if (!isRecord(promptResult)) return undefined;
+  return stringValue(promptResult.stopReason);
+}
+
+function mapRunStatus(stopReason: string | undefined, error: unknown): DriverRunStatus {
+  if (error) return "failed";
+  const normalized = (stopReason || "done").toLowerCase();
+  if (normalized.includes("cancel")) return "cancelled";
+  if (normalized.includes("interrupt")) return "interrupted";
+  if (normalized.includes("error") || normalized.includes("fail")) return "failed";
+  return "succeeded";
+}
+
+function buildDriverError(
+  status: DriverRunStatus,
+  stopReason: string | undefined,
+  error: unknown
+): DriverRunResult["error"] {
+  if (error) {
+    return {
+      code: "DRIVER_RUNNER_ERROR",
+      message: errorMessage(error),
+      retryable: true,
+    };
+  }
+
+  if (status === "failed") {
+    return {
+      code: "ACP_STOP_REASON",
+      message: `ACP agent returned stop reason: ${stopReason || "unknown"}`,
+      retryable: true,
+    };
+  }
+
+  return undefined;
+}
+
+function normalizeToolStatus(value: unknown): DriverToolEvent["status"] {
+  if (
+    value === "pending" ||
+    value === "in_progress" ||
+    value === "completed" ||
+    value === "failed"
+  ) {
+    return value;
+  }
+  return "in_progress";
+}
+
+function summarizeToolUpdate(update: Record<string, unknown>, existing?: DriverToolEvent): string {
+  const status = stringValue(update.status);
+  if (status === "completed") return "ACP tool call completed.";
+  if (status === "failed") return "ACP tool call failed.";
+  return existing?.summary || "ACP tool call updated.";
+}
+
+function textFromContent(content: unknown): string {
+  if (!isRecord(content)) return "";
+  return stringValue(content.text) || "";
+}
+
+function updateRecord(event: ConnectionEvent): Record<string, unknown> {
+  const payload = payloadRecord(event);
+  return isRecord(payload.update) ? payload.update : {};
+}
+
+function payloadRecord(event: ConnectionEvent): Record<string, unknown> {
+  return isRecord(event.payload) ? event.payload : {};
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function main(): Promise<void> {
+  const agentId = process.env.ACP_AGENT_ID || "mock-driver";
+  const workspace = resolve(process.env.ACP_WORKSPACE || process.cwd());
+  const startedAtMs = Date.now();
+  let input: DriverPrompt | undefined;
+
+  try {
+    input = parseDriverPrompt(await readStdin());
+    const result = await runContractPrompt(input, { agentId, workspace });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    if (result.error?.code === "DRIVER_RUNNER_ERROR") {
+      process.exitCode = 1;
+    }
+  } catch (error) {
+    process.stderr.write(`[driver:run] ${errorMessage(error)}\n`);
+    const result = buildRunResult({
+      input,
+      agentId,
+      workspace,
+      startedAtMs,
+      events: [],
+      error,
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    process.exitCode = 1;
+  }
+}
+
+main().catch((error) => {
+  process.stderr.write(`[driver:run] fatal: ${errorMessage(error)}\n`);
+  process.exit(1);
+});
