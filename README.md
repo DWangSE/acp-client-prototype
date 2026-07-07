@@ -63,6 +63,28 @@ const builder = new AcpClientBuilder()
 const client = builder.build();
 ```
 
+For production integration, the bundled handlers and stores are defaults only. Upper-layer
+orchestrators can replace the method handlers, auth executor, session manager, or transport
+connection during construction:
+
+```typescript
+import { AcpClientBuilder, ClientMethodRouter } from "acp-client-prototype";
+
+const methodRouter = new ClientMethodRouter();
+methodRouter.register("custom/audit", new AuditHandler());
+
+const client = new AcpClientBuilder()
+  .withAgent("gemini")
+  .withFileSystemHandler(new CoordinatorFileSystemHandler())
+  .withPermissionHandler(new CoordinatorPermissionHandler())
+  .withTerminalHandler(new RemoteTerminalHandler())
+  .withMethodRouter(methodRouter)
+  .withAuthLayer(new CoordinatorAuthLayer())
+  .withSessionManager(new PersistentSessionManager())
+  .withConnectionFactory((adapter) => createObservedConnection(adapter))
+  .build();
+```
+
 ---
 
 ### 2. Client States & Events
@@ -193,21 +215,25 @@ ACP agents can call the client's terminal capability through the standard `termi
 | `terminal/kill`          | Terminates the process while keeping the terminal available for output.  |
 | `terminal/release`       | Frees terminal resources and invalidates the `terminalId`.               |
 
-`AcpClientBuilder` registers `TerminalHandler` by default. Upper-layer orchestrators can replace or wrap it for auditing, policy checks, remote execution, or coordinator-owned terminal management:
+`AcpClientBuilder` registers local default handlers for `fs`, `session`, and `terminal`. These defaults are useful for standalone tests and local development. Upper-layer orchestrators can replace or wrap them for auditing, policy checks, remote execution, or coordinator-owned resource management:
 
 ```typescript
 const client = new AcpClientBuilder()
   .withAgent("gemini")
+  .withFileSystemHandler(new CoordinatorFileSystemHandler())
+  .withPermissionHandler(new CoordinatorPermissionHandler())
   .withTerminalHandler(new AuditedTerminalHandler(new TerminalHandler()))
   .build();
 
 const coordinatorOwnedClient = new AcpClientBuilder()
   .withAgent("gemini")
+  .registerMethodHandler("fs", new CoordinatorFileSystemHandler())
+  .registerMethodHandler("session", new CoordinatorPermissionHandler())
   .registerMethodHandler("terminal", new CoordinatorTerminalHandler())
   .build();
 ```
 
-Use `withTerminalHandler()` for the common terminal override path. Use `registerMethodHandler(methodNameOrPrefix, handler)` when a coordinator needs to own any client method prefix or exact method name.
+Use the dedicated `withFileSystemHandler()`, `withPermissionHandler()`, and `withTerminalHandler()` methods for common replacement paths. Use `registerMethodHandler(methodNameOrPrefix, handler)` when a coordinator needs to own any client method prefix or exact method name.
 
 To verify the terminal lifecycle, run the terminal method test. It uses `mock-driver` by default and can target a real agent with an argument or `TERMINAL_TEST_AGENT`:
 
