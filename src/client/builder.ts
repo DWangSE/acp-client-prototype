@@ -15,6 +15,7 @@ import { TerminalHandler } from "../client-methods/terminal-handler.js";
 import { ClientMethodHandler } from "../client-methods/interface.js";
 import { ExtensionMethod, loadExtensionConfig } from "../client-methods/extension-loader.js";
 import { AgentAdapter } from "../driver-adapter/interface.js";
+import { ConfigurationError } from "../core/errors.js";
 
 export type ConnectionFactory = (adapter: AgentAdapter) => AgentConnection;
 
@@ -117,12 +118,12 @@ export class AcpClientBuilder {
 
   build(): AcpClient {
     if (!this.agentId) {
-      throw new Error("Agent ID must be specified using 'withAgent()'");
+      throw new ConfigurationError("Agent ID must be specified using 'withAgent()'");
     }
 
     const adapter = ADAPTER_REGISTRY.getAdapter(this.agentId);
     if (!adapter) {
-      throw new Error(`Unknown agent: ${this.agentId}`);
+      throw new ConfigurationError(`Unknown agent: ${this.agentId}`, { agentId: this.agentId });
     }
 
     const connection = this.resolveConnection(adapter);
@@ -184,7 +185,9 @@ export class AcpClientBuilder {
 
   private resolveConnection(adapter: AgentAdapter): AgentConnection {
     if (this.connection && this.connectionFactory) {
-      throw new Error("Use either withConnection() or withConnectionFactory(), not both");
+      throw new ConfigurationError(
+        "Use either withConnection() or withConnectionFactory(), not both"
+      );
     }
 
     if (this.connection) {

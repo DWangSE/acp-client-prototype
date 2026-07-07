@@ -1,4 +1,4 @@
-import { ClientSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
+import { ClientSideConnection, ndJsonStream, RequestError } from "@agentclientprotocol/sdk";
 import type { Client, SessionNotification } from "@agentclientprotocol/sdk";
 import spawn from "cross-spawn";
 import { spawnSync, type ChildProcess } from "node:child_process";
@@ -131,9 +131,7 @@ export class AcpConnection implements AgentConnection {
 
   private async routeClientMethod(method: string, params: any): Promise<any> {
     if (!this.methodRouter) {
-      throw new TransportError(
-        `No client method router configured for ACP client method: ${method}`
-      );
+      throw RequestError.methodNotFound(method);
     }
 
     return await this.methodRouter.route(method, params);

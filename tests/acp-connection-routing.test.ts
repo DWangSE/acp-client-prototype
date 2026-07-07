@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { RequestError } from "@agentclientprotocol/sdk";
 import { AcpConnection } from "../src/index.js";
 
 type RouteCapableConnection = {
@@ -12,7 +13,8 @@ test("ACP connection fails fast when client method router is missing", async () 
 
   await assert.rejects(
     () => connection.routeClientMethod("terminal/create", { command: "echo test" }),
-    /No client method router configured for ACP client method: terminal\/create/
+    (err) =>
+      err instanceof RequestError && err.code === -32601 && err.message.includes("terminal/create")
   );
 });
 

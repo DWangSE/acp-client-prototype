@@ -1,6 +1,8 @@
 import http from "node:http";
 import { URL } from "node:url";
+import { RequestError } from "@agentclientprotocol/sdk";
 import { ExtensionMethod } from "./extension-loader.js";
+import { AcpError, PermissionDeniedError } from "../core/errors.js";
 
 export type ExtensionMcpToolHandler = (method: string, args: unknown) => Promise<unknown>;
 
@@ -142,18 +144,39 @@ export class ExtensionMcpServer {
       body += chunk.toString();
     });
     req.on("end", async () => {
+      let request: JsonRpcRequest | null = null;
       try {
-        const request: JsonRpcRequest = JSON.parse(body);
+        request = parseJsonRpcRequest(body);
+        if (!session) {
+          const response =
+            request.id === undefined
+              ? null
+              : requestErrorResponse(request.id, {
+                  code: -32600,
+                  message: `Invalid request: unknown MCP session_id ${sessionId ?? "<missing>"}`,
+                });
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(response ? JSON.stringify(response) : "");
+          return;
+        }
+
         const response = await this.handleJsonRpc(request);
-        if (response && session) {
+        if (response) {
           this.sendSse(session.res, "message", JSON.stringify(response));
         }
         res.writeHead(202);
         res.end();
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const error =
+          err instanceof SyntaxError
+            ? RequestError.parseError(undefined, err.message).toErrorResponse()
+            : toJsonRpcError(err);
+        const response =
+          request?.id === undefined
+            ? { jsonrpc: "2.0", error }
+            : requestErrorResponse(request.id, error);
         res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: message }));
+        res.end(JSON.stringify(response));
       }
     });
   }
@@ -191,7 +214,15 @@ export class ExtensionMcpServer {
           return {
             jsonrpc: "2.0",
             id,
-            error: { code: -32602, message: "Missing tool name" },
+            error: RequestError.invalidParams(params, "Missing tool name").toErrorResponse(),
+          };
+        }
+
+        if (!this.methods.some((m) => m.name === name)) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: RequestError.methodNotFound(name).toErrorResponse(),
           };
         }
 
@@ -208,11 +239,10 @@ export class ExtensionMcpServer {
       return {
         jsonrpc: "2.0",
         id,
-        error: { code: -32601, message: `Method not found: ${method}` },
+        error: RequestError.methodNotFound(method).toErrorResponse(),
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { jsonrpc: "2.0", id, error: { code: -32603, message } };
+      return { jsonrpc: "2.0", id, error: toJsonRpcError(err) };
     }
   }
 
@@ -240,4 +270,46 @@ export class ExtensionMcpServer {
     res.write(`event: ${event}\n`);
     res.write(`data: ${data}\n\n`);
   }
+}
+
+function requestErrorResponse(
+  id: number | string,
+  error: JsonRpcResponse["error"]
+): JsonRpcResponse {
+  return {
+    jsonrpc: "2.0",
+    id,
+    error,
+  };
+}
+
+function parseJsonRpcRequest(body: string): JsonRpcRequest {
+  const parsed = JSON.parse(body);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw RequestError.invalidRequest(parsed, "Request must be an object");
+  }
+  if (parsed.jsonrpc !== "2.0" || typeof parsed.method !== "string") {
+    throw RequestError.invalidRequest(parsed, "Request must include jsonrpc 2.0 and method");
+  }
+  if (parsed.id !== undefined && typeof parsed.id !== "string" && typeof parsed.id !== "number") {
+    throw RequestError.invalidRequest(parsed, "Request id must be a string or number");
+  }
+  return parsed as JsonRpcRequest;
+}
+
+function toJsonRpcError(err: unknown): NonNullable<JsonRpcResponse["error"]> {
+  if (err instanceof RequestError) {
+    return err.toErrorResponse();
+  }
+
+  if (err instanceof PermissionDeniedError) {
+    return RequestError.invalidRequest(err.data, err.message).toErrorResponse();
+  }
+
+  if (err instanceof AcpError) {
+    return RequestError.internalError(err.data, err.message).toErrorResponse();
+  }
+
+  const message = err instanceof Error ? err.message : String(err);
+  return RequestError.internalError(undefined, message).toErrorResponse();
 }
