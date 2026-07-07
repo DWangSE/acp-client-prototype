@@ -97,6 +97,10 @@ root export 按稳定集成点组织：
 
 extension MCP server 内部实现、私有 parser helper 等实现细节不属于 root public API。
 
+#### Client Method Routing Policy
+
+`AcpClientBuilder` 会在 connection 被使用前安装 `ClientMethodRouter`。如果上层直接构造 `AcpConnection`，必须先调用 `setMethodRouter(...)`，再允许 ACP agent 调用 client methods。缺少 router 或缺少 handler 时会直接失败；connection 不会返回文件、权限、终端或扩展方法的 stub 结果。
+
 在生产集成中，项目内置的 handler、auth、session、connection 都只是默认实现。上层 orchestrator/coordinator 可以在构建阶段替换方法处理器、认证执行器、会话管理器或底层连接：
 
 ```typescript
