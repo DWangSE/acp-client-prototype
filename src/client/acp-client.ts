@@ -1,7 +1,6 @@
 import { EventEmitter } from "node:events";
 import { AgentConnection, ConnectionEvent, TurnController } from "../connection/interface.js";
 import { AgentAdapter } from "../driver-adapter/interface.js";
-import { AuthLayer } from "../auth/auth-layer.js";
 import { SessionManager, SessionInfo } from "../session/interface.js";
 import { ClientMethodRouter } from "../client-methods/router.js";
 import { ClientInterceptors, HookPoint } from "../hook-gate/interface.js";
@@ -10,6 +9,7 @@ import type { InitializeResult } from "../connection/interface.js";
 import type { ClientCapabilities, McpServerConfig } from "../core/types.js";
 import type { ExtensionMethod } from "../client-methods/extension-loader.js";
 import { ExtensionMcpServer } from "../client-methods/extension-mcp-server.js";
+import type { AuthExecutor } from "../auth/interface.js";
 
 export type ClientState =
   | "disconnected"
@@ -22,7 +22,7 @@ export type ClientState =
 export interface AcpClientOptions {
   adapter: AgentAdapter;
   connection: AgentConnection;
-  authLayer: AuthLayer;
+  authLayer: AuthExecutor;
   sessionManager: SessionManager;
   methodRouter: ClientMethodRouter;
   interceptors?: ClientInterceptors;
@@ -34,7 +34,7 @@ export interface AcpClientOptions {
 export class AcpClient extends EventEmitter {
   private adapter: AgentAdapter;
   private connection: AgentConnection;
-  private authLayer: AuthLayer;
+  private authLayer: AuthExecutor;
   private sessionManager: SessionManager;
   private methodRouter: ClientMethodRouter;
   private interceptors?: ClientInterceptors;
