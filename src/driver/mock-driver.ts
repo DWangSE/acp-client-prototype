@@ -147,8 +147,31 @@ function extractQuotedValue(text: string, key: string): string | undefined {
   return match?.[1];
 }
 
+function isTerminalLifecyclePrompt(text: string): boolean {
+  return (
+    text.includes("TERMINAL_TEST_DONE") &&
+    text.includes("terminal lifecycle check") &&
+    extractQuotedValue(text, "token") !== undefined &&
+    extractQuotedValue(text, "killToken") !== undefined
+  );
+}
+
 function isSseMcpServer(server: McpServerConfig): server is SseMcpServerConfig {
   return "type" in server && server.type === "sse";
+}
+
+function terminalShortCommand(token: string) {
+  return {
+    command: process.execPath,
+    args: ["-e", `console.log(${JSON.stringify(token)});`],
+  };
+}
+
+function terminalLongRunningCommand(killToken: string) {
+  return {
+    command: process.execPath,
+    args: ["-e", `console.log(${JSON.stringify(killToken)}); setTimeout(() => {}, 30000);`],
+  };
 }
 
 function parseSseEvent(chunk: string): { event?: string; data?: string } {
@@ -292,6 +315,59 @@ async function callSseMcpTool(
   }
 }
 
+async function expectTerminalOutputRejected(terminal: any): Promise<void> {
+  try {
+    await terminal.currentOutput();
+  } catch {
+    return;
+  }
+  throw new Error("terminal/output succeeded after terminal/release");
+}
+
+async function runTerminalWorkflow(
+  conn: any,
+  sessionId: string,
+  token: string,
+  killToken: string
+): Promise<void> {
+  const short = terminalShortCommand(token);
+  const terminal = await conn.createTerminal({
+    sessionId,
+    command: short.command,
+    args: short.args,
+    cwd: process.cwd(),
+    outputByteLimit: 4096,
+  });
+
+  try {
+    await terminal.waitForExit();
+    await terminal.currentOutput();
+  } finally {
+    await terminal.release();
+  }
+  await expectTerminalOutputRejected(terminal);
+
+  const longRunning = terminalLongRunningCommand(killToken);
+  const killTerminal = await conn.createTerminal({
+    sessionId,
+    command: longRunning.command,
+    args: longRunning.args,
+    cwd: process.cwd(),
+    outputByteLimit: 4096,
+  });
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await killTerminal.currentOutput();
+    await killTerminal.kill();
+    await killTerminal.waitForExit();
+    await killTerminal.currentOutput();
+  } finally {
+    await killTerminal.release();
+  }
+  await expectTerminalOutputRejected(killTerminal);
+}
+
 export function runAcpMockServer() {
   const writable = Writable.toWeb(process.stdout) as WritableStream<Uint8Array>;
   const readable = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
@@ -340,7 +416,49 @@ export function runAcpMockServer() {
         const promptText = params.prompt[0]?.text || "";
 
         try {
-          if (promptText.includes("call_success")) {
+          if (isTerminalLifecyclePrompt(promptText)) {
+            const token = extractQuotedValue(promptText, "token");
+            const killToken = extractQuotedValue(promptText, "killToken");
+            if (!token) throw new Error("terminal workflow prompt did not include token");
+            if (!killToken) throw new Error("terminal workflow prompt did not include killToken");
+
+            await conn.sessionUpdate({
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "tool_call",
+                toolCallId: "mock-terminal-workflow",
+                title: "ACP terminal workflow test",
+                kind: "execute",
+                status: "in_progress",
+              },
+            });
+
+            await runTerminalWorkflow(conn, params.sessionId, token, killToken);
+
+            await conn.sessionUpdate({
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "tool_call_update",
+                toolCallId: "mock-terminal-workflow",
+                status: "completed",
+              },
+            });
+
+            await conn.sessionUpdate({
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                content: {
+                  type: "text",
+                  text: "TERMINAL_TEST_DONE",
+                },
+              },
+            });
+
+            return {
+              stopReason: "done",
+            };
+          } else if (promptText.includes("call_success")) {
             const session = sessions.get(params.sessionId);
             const sseServer = session?.mcpServers.find(isSseMcpServer);
             if (!sseServer) throw new Error("No SSE MCP server configured for call_success");
@@ -411,13 +529,16 @@ export function runAcpMockServer() {
             };
           }
         } catch (err: any) {
+          const isTerminalTest = promptText.includes("TERMINAL_TEST_DONE");
           await conn.sessionUpdate({
             sessionId: params.sessionId,
             update: {
               sessionUpdate: "agent_message_chunk",
               content: {
                 type: "text",
-                text: `ERROR:${err.message || String(err)}`,
+                text: isTerminalTest
+                  ? `TERMINAL_TEST_FAIL ${err.message || String(err)}`
+                  : `ERROR:${err.message || String(err)}`,
               },
             },
           });
