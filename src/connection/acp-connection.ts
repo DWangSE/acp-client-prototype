@@ -104,6 +104,27 @@ export class AcpConnection implements AgentConnection {
         this.emitEvent("terminal/create" as any, params);
         return { terminalId: "term_stub" };
       },
+      terminalOutput: async (params) => {
+        if (this.methodRouter) return await this.methodRouter.route("terminal/output", params);
+        this.emitEvent("terminal/output" as any, params);
+        return { output: "", truncated: false };
+      },
+      waitForTerminalExit: async (params) => {
+        if (this.methodRouter)
+          return await this.methodRouter.route("terminal/wait_for_exit", params);
+        this.emitEvent("terminal/wait_for_exit" as any, params);
+        return { exitCode: 0, signal: null };
+      },
+      killTerminal: async (params) => {
+        if (this.methodRouter) return await this.methodRouter.route("terminal/kill", params);
+        this.emitEvent("terminal/kill" as any, params);
+        return {};
+      },
+      releaseTerminal: async (params) => {
+        if (this.methodRouter) return await this.methodRouter.route("terminal/release", params);
+        this.emitEvent("terminal/release" as any, params);
+        return {};
+      },
       extMethod: async (method: string, params: Record<string, unknown>) => {
         if (this.methodRouter) return await this.methodRouter.route(method, params);
         this.emitEvent(method as any, params);
