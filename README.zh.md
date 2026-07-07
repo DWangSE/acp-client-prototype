@@ -63,6 +63,40 @@ const builder = new AcpClientBuilder()
 const client = builder.build();
 ```
 
+#### Public API Surface
+
+上层集成代码应优先从 package root 导入扩展契约，而不是依赖内部源码路径：
+
+```typescript
+import {
+  AcpClientBuilder,
+  ClientMethodHandler,
+  ClientMethodRouter,
+  AgentConnection,
+  AgentAdapter,
+  AuthExecutor,
+  SessionManager,
+  PtyOutputParser,
+  ClientCapabilities,
+  McpServerConfig,
+} from "acp-client-prototype";
+```
+
+root export 按稳定集成点组织：
+
+| 分类              | 公开导出                                                                                             |
+| ----------------- | ---------------------------------------------------------------------------------------------------- |
+| Client 构建       | `AcpClientBuilder`, `AcpClient`, `AcpClientOptions`, `ConnectionFactory`                             |
+| Method handling   | `ClientMethodHandler`, `ClientMethodRouter`, `ExtensionMethod`, `loadExtensionConfig`                |
+| 默认本地 handler  | `FileSystemHandler`, `PermissionHandler`, `TerminalHandler`, `TerminalHandlerOptions`                |
+| Connection 扩展   | `AgentConnection`, `ConnectionEvent`, `TurnController`, `AcpConnection`, `PtyConnection`             |
+| Adapter 扩展      | `AgentAdapter`, `ADAPTER_REGISTRY`                                                                   |
+| Auth/session 扩展 | `AuthExecutor`, `AuthLayer`, `SessionManager`, `MemorySessionStore`                                  |
+| PTY parser 扩展   | `PtyOutputParser`, `PtyParserContext`, `DefaultPtyParser`, `AiderPtyParser`                          |
+| 协议类型          | `ClientCapabilities`, `McpServerConfig`, `SessionNotification`, `ToolCallUpdate` 及相关 ACP 数据类型 |
+
+extension MCP server 内部实现、私有 parser helper 等实现细节不属于 root public API。
+
 在生产集成中，项目内置的 handler、auth、session、connection 都只是默认实现。上层 orchestrator/coordinator 可以在构建阶段替换方法处理器、认证执行器、会话管理器或底层连接：
 
 ```typescript

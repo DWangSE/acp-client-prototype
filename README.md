@@ -63,6 +63,41 @@ const builder = new AcpClientBuilder()
 const client = builder.build();
 ```
 
+#### Public API Surface
+
+Upper-layer integrations should import extension contracts from the package root instead of
+internal source paths:
+
+```typescript
+import {
+  AcpClientBuilder,
+  ClientMethodHandler,
+  ClientMethodRouter,
+  AgentConnection,
+  AgentAdapter,
+  AuthExecutor,
+  SessionManager,
+  PtyOutputParser,
+  ClientCapabilities,
+  McpServerConfig,
+} from "acp-client-prototype";
+```
+
+The root export is organized around stable integration points:
+
+| Category               | Public exports                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Client construction    | `AcpClientBuilder`, `AcpClient`, `AcpClientOptions`, `ConnectionFactory`                                     |
+| Method handling        | `ClientMethodHandler`, `ClientMethodRouter`, `ExtensionMethod`, `loadExtensionConfig`                        |
+| Default local handlers | `FileSystemHandler`, `PermissionHandler`, `TerminalHandler`, `TerminalHandlerOptions`                        |
+| Connection extension   | `AgentConnection`, `ConnectionEvent`, `TurnController`, `AcpConnection`, `PtyConnection`                     |
+| Adapter extension      | `AgentAdapter`, `ADAPTER_REGISTRY`                                                                           |
+| Auth/session extension | `AuthExecutor`, `AuthLayer`, `SessionManager`, `MemorySessionStore`                                          |
+| PTY parser extension   | `PtyOutputParser`, `PtyParserContext`, `DefaultPtyParser`, `AiderPtyParser`                                  |
+| Protocol types         | `ClientCapabilities`, `McpServerConfig`, `SessionNotification`, `ToolCallUpdate`, and related ACP data types |
+
+Implementation details such as the extension MCP server internals and private parser helpers are intentionally not part of the public root API.
+
 For production integration, the bundled handlers and stores are defaults only. Upper-layer
 orchestrators can replace the method handlers, auth executor, session manager, or transport
 connection during construction:
