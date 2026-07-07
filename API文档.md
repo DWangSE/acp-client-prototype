@@ -117,6 +117,39 @@ src/
 
 ---
 
+## Public API Surface
+
+上层 orchestrator/coordinator 应从 package root 导入稳定扩展接口，而不是依赖 `src/...` 内部路径。root public API 包含以下类别：
+
+| 分类              | 公开导出                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| Client 构建       | `AcpClientBuilder`, `AcpClient`, `AcpClientOptions`, `ConnectionFactory`                                      |
+| Method handling   | `ClientMethodHandler`, `ClientMethodRouter`, `ExtensionMethod`, `loadExtensionConfig`                         |
+| 默认本地 handler  | `FileSystemHandler`, `PermissionHandler`, `TerminalHandler`, `TerminalHandlerOptions`                         |
+| Connection 扩展   | `AgentConnection`, `ConnectionEvent`, `ConnectionOptions`, `TurnController`, `AcpConnection`, `PtyConnection` |
+| Adapter 扩展      | `AgentAdapter`, `ADAPTER_REGISTRY`                                                                            |
+| Auth/session 扩展 | `AuthExecutor`, `AuthLayer`, `AuthStrategy`, `SessionManager`, `MemorySessionStore`                           |
+| PTY parser 扩展   | `PtyOutputParser`, `PtyParserContext`, `PtyParserResult`, `DefaultPtyParser`, `AiderPtyParser`                |
+| ACP 协议数据类型  | `ClientCapabilities`, `McpServerConfig`, `SessionNotification`, `ToolCallUpdate`, `PermissionRequest` 等      |
+| Driver 类型       | `DriverRuntimeHandle`, `DriverRunResult`, `DriverCapabilities`, `ArtifactRef`, `ContextPackRef` 等            |
+
+示例：
+
+```typescript
+import {
+  AcpClientBuilder,
+  ClientMethodHandler,
+  AgentConnection,
+  AuthExecutor,
+  SessionManager,
+  PtyOutputParser,
+} from "acp-client-prototype";
+```
+
+`ExtensionMcpServer`、JSON-RPC/SSE 内部类型、具体 parser 私有 helper 等属于内部实现，不作为 root public API 承诺。
+
+---
+
 ## 6. 客户端方法 (`src/client-methods/`)
 
 实现了 Agent 回调 Client 端的真实能力：
