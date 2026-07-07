@@ -82,6 +82,7 @@ export type {
   ToolContent,
   UserMessageChunkUpdate,
 } from "./core/types.js";
+export * from "./core/errors.js";
 
 // Driver exports
 export * from "./driver/interface.js";
