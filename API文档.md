@@ -125,6 +125,29 @@ src/
 - **权限**: 通过 `@inquirer/prompts` 提供交互式确认，支持 `AUTO_APPROVE` 环境变量。
 - **终端**: 通过 `TerminalHandler` 实现完整 `terminal/*` 生命周期方法，真实派生本地进程并管理输出、退出状态、终止和释放。
 
+这些 handler 是本项目提供的默认本地实现。更大的 orchestrator/coordinator 可以通过 Builder 接口替换它们，让实际文件访问、权限审批、终端执行或审计逻辑由上层系统托管：
+
+```typescript
+const client = new AcpClientBuilder()
+  .withAgent("gemini")
+  .withFileSystemHandler(new CoordinatorFileSystemHandler())
+  .withPermissionHandler(new CoordinatorPermissionHandler())
+  .withTerminalHandler(new CoordinatorTerminalHandler())
+  .build();
+```
+
+如果上层需要统一接管任意方法前缀或精确方法名，可以使用通用注册接口：
+
+```typescript
+const client = new AcpClientBuilder()
+  .withAgent("gemini")
+  .registerMethodHandler("fs", new CoordinatorFileSystemHandler())
+  .registerMethodHandler("session", new CoordinatorPermissionHandler())
+  .registerMethodHandler("terminal", new CoordinatorTerminalHandler())
+  .registerMethodHandler("custom/exact_method", new ExactMethodHandler())
+  .build();
+```
+
 ### `TerminalHandler`
 
 `TerminalHandler` 是默认的 ACP terminal client method 处理器。它支持以下方法：
@@ -163,6 +186,37 @@ const client = new AcpClientBuilder()
 ```
 
 终端集成测试位于 `tests/terminal-method.test.ts`。该测试通过 prompt 指示 Agent 使用 `terminal/create`、`terminal/output`、`terminal/wait_for_exit`、`terminal/kill` 和 `terminal/release`，并在 Client 侧包装真实 `TerminalHandler` 进行审计断言。默认 driver 是 `mock-driver`，也可以用 `TERMINAL_TEST_AGENT` 或命令行参数指定真实 Agent。
+
+---
+
+### Builder 高级注入接口
+
+`AcpClientBuilder` 默认组装本地连接、认证层、内存 session store 和默认 method router。上层系统可以按需替换这些组件：
+
+| 方法                                                 | 作用                                                             |
+| ---------------------------------------------------- | ---------------------------------------------------------------- |
+| `withFileSystemHandler(handler)`                     | 替换 `fs/*` client methods。                                     |
+| `withPermissionHandler(handler)`                     | 替换 `session/request_permission`。                              |
+| `withTerminalHandler(handler)`                       | 替换 `terminal/*` client methods。                               |
+| `registerMethodHandler(methodNameOrPrefix, handler)` | 注册或覆盖任意精确方法名或方法前缀。                             |
+| `withMethodRouter(router)`                           | 注入完整 method router。                                         |
+| `withAuthLayer(authLayer)`                           | 注入认证执行器，由上层统一处理认证策略。                         |
+| `withSessionManager(sessionManager)`                 | 注入会话管理器，例如持久化 store。                               |
+| `withConnection(connection)`                         | 直接注入连接实例。                                               |
+| `withConnectionFactory(factory)`                     | 按 `AgentAdapter` 动态创建连接，适合审计包装或自定义 transport。 |
+
+示例：
+
+```typescript
+const client = new AcpClientBuilder()
+  .withAgent("gemini")
+  .withAuthLayer(new CoordinatorAuthLayer())
+  .withSessionManager(new PersistentSessionManager())
+  .withConnectionFactory((adapter) => createObservedConnection(adapter))
+  .build();
+```
+
+`withConnection()` 与 `withConnectionFactory()` 不能同时使用；如果同时设置，`build()` 会抛出错误。
 
 ---
 

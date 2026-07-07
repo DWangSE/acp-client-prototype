@@ -63,6 +63,26 @@ const builder = new AcpClientBuilder()
 const client = builder.build();
 ```
 
+在生产集成中，项目内置的 handler、auth、session、connection 都只是默认实现。上层 orchestrator/coordinator 可以在构建阶段替换方法处理器、认证执行器、会话管理器或底层连接：
+
+```typescript
+import { AcpClientBuilder, ClientMethodRouter } from "acp-client-prototype";
+
+const methodRouter = new ClientMethodRouter();
+methodRouter.register("custom/audit", new AuditHandler());
+
+const client = new AcpClientBuilder()
+  .withAgent("gemini")
+  .withFileSystemHandler(new CoordinatorFileSystemHandler())
+  .withPermissionHandler(new CoordinatorPermissionHandler())
+  .withTerminalHandler(new RemoteTerminalHandler())
+  .withMethodRouter(methodRouter)
+  .withAuthLayer(new CoordinatorAuthLayer())
+  .withSessionManager(new PersistentSessionManager())
+  .withConnectionFactory((adapter) => createObservedConnection(adapter))
+  .build();
+```
+
 ---
 
 ### 2. Client 状态管理与数据出口
@@ -193,21 +213,25 @@ ACP Agent 可以通过标准 `terminal/*` client methods 调用宿主客户端�
 | `terminal/kill`          | 终止进程，但保留 terminal，供 Agent 继续读取最终输出。 |
 | `terminal/release`       | 释放终端资源，并使对应 `terminalId` 对后续调用失效。   |
 
-`AcpClientBuilder` 默认注册 `TerminalHandler`。上层 orchestrator/coordinator 可以替换或包装它，以实现审计、策略控制、远程执行，或由协调层托管终端生命周期：
+`AcpClientBuilder` 默认注册本地 `fs`、`session` 和 `terminal` handler。这些默认实现适合独立运行、样例和本地测试；在更大的 orchestrator/coordinator 中，上层可以替换或包装它们，以实现审计、策略控制、远程执行，或由协调层托管资源生命周期：
 
 ```typescript
 const client = new AcpClientBuilder()
   .withAgent("gemini")
+  .withFileSystemHandler(new CoordinatorFileSystemHandler())
+  .withPermissionHandler(new CoordinatorPermissionHandler())
   .withTerminalHandler(new AuditedTerminalHandler(new TerminalHandler()))
   .build();
 
 const coordinatorOwnedClient = new AcpClientBuilder()
   .withAgent("gemini")
+  .registerMethodHandler("fs", new CoordinatorFileSystemHandler())
+  .registerMethodHandler("session", new CoordinatorPermissionHandler())
   .registerMethodHandler("terminal", new CoordinatorTerminalHandler())
   .build();
 ```
 
-常规终端能力替换优先使用 `withTerminalHandler()`。如果上层需要接管任意 client method 前缀或精确方法名，可以使用 `registerMethodHandler(methodNameOrPrefix, handler)`。
+常规替换优先使用 `withFileSystemHandler()`、`withPermissionHandler()` 和 `withTerminalHandler()`。如果上层需要接管任意 client method 前缀或精确方法名，可以使用 `registerMethodHandler(methodNameOrPrefix, handler)`。
 
 可以用终端方法测试验证完整生命周期。默认使用 `mock-driver`，也可以通过参数或 `TERMINAL_TEST_AGENT` 指定真实 Agent：
 

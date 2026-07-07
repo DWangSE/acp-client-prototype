@@ -2,8 +2,11 @@ import { AcpClient, AcpClientOptions } from "./acp-client.js";
 import { ADAPTER_REGISTRY } from "../driver-adapter/registry.js";
 import { AcpConnection } from "../connection/acp-connection.js";
 import { PtyConnection } from "../connection/pty-connection.js";
+import { AgentConnection } from "../connection/interface.js";
 import { AuthLayer } from "../auth/auth-layer.js";
+import { AuthExecutor } from "../auth/interface.js";
 import { MemorySessionStore } from "../session/memory-session-store.js";
+import { SessionManager } from "../session/interface.js";
 import { ClientMethodRouter } from "../client-methods/router.js";
 import { ClientInterceptors } from "../hook-gate/interface.js";
 import { FileSystemHandler } from "../client-methods/filesystem-handler.js";
@@ -11,13 +14,23 @@ import { PermissionHandler } from "../client-methods/permission-handler.js";
 import { TerminalHandler } from "../client-methods/terminal-handler.js";
 import { ClientMethodHandler } from "../client-methods/interface.js";
 import { ExtensionMethod, loadExtensionConfig } from "../client-methods/extension-loader.js";
+import { AgentAdapter } from "../driver-adapter/interface.js";
+
+export type ConnectionFactory = (adapter: AgentAdapter) => AgentConnection;
 
 export class AcpClientBuilder {
   private agentId?: string;
   private verbose: boolean = false;
   private extensionConfigPath?: string;
   private handlers: Record<string, ClientMethodHandler> = {};
+  private fileSystemHandler?: ClientMethodHandler;
+  private permissionHandler?: ClientMethodHandler;
   private terminalHandler?: ClientMethodHandler;
+  private methodRouter?: ClientMethodRouter;
+  private authLayer?: AuthExecutor;
+  private sessionManager?: SessionManager;
+  private connection?: AgentConnection;
+  private connectionFactory?: ConnectionFactory;
   private autoApprove: boolean = false;
   private sandboxDir: string = process.cwd();
   private interceptors?: ClientInterceptors;
@@ -57,8 +70,43 @@ export class AcpClientBuilder {
     return this;
   }
 
+  withFileSystemHandler(handler: ClientMethodHandler): this {
+    this.fileSystemHandler = handler;
+    return this;
+  }
+
+  withPermissionHandler(handler: ClientMethodHandler): this {
+    this.permissionHandler = handler;
+    return this;
+  }
+
   withTerminalHandler(handler: ClientMethodHandler): this {
     this.terminalHandler = handler;
+    return this;
+  }
+
+  withMethodRouter(methodRouter: ClientMethodRouter): this {
+    this.methodRouter = methodRouter;
+    return this;
+  }
+
+  withAuthLayer(authLayer: AuthExecutor): this {
+    this.authLayer = authLayer;
+    return this;
+  }
+
+  withSessionManager(sessionManager: SessionManager): this {
+    this.sessionManager = sessionManager;
+    return this;
+  }
+
+  withConnection(connection: AgentConnection): this {
+    this.connection = connection;
+    return this;
+  }
+
+  withConnectionFactory(connectionFactory: ConnectionFactory): this {
+    this.connectionFactory = connectionFactory;
     return this;
   }
 
@@ -77,19 +125,17 @@ export class AcpClientBuilder {
       throw new Error(`Unknown agent: ${this.agentId}`);
     }
 
-    const connection =
-      adapter.connectionType === "acp"
-        ? new AcpConnection()
-        : new PtyConnection(adapter.createPtyParser?.());
-    const authLayer = new AuthLayer();
-    const sessionManager = new MemorySessionStore();
-    const methodRouter = new ClientMethodRouter();
+    const connection = this.resolveConnection(adapter);
+    const authLayer = this.authLayer ?? new AuthLayer();
+    const sessionManager = this.sessionManager ?? new MemorySessionStore();
+    const methodRouter = this.methodRouter ?? new ClientMethodRouter();
 
     // Register default handlers
-    methodRouter.register("fs", new FileSystemHandler(this.sandboxDir));
+    methodRouter.register("fs", this.fileSystemHandler ?? new FileSystemHandler(this.sandboxDir));
     methodRouter.register(
       "session",
-      new PermissionHandler(this.autoApprove || process.env.AUTO_APPROVE === "1")
+      this.permissionHandler ??
+        new PermissionHandler(this.autoApprove || process.env.AUTO_APPROVE === "1")
     );
     methodRouter.register("terminal", this.terminalHandler ?? new TerminalHandler());
 
@@ -134,5 +180,23 @@ export class AcpClientBuilder {
     };
 
     return new AcpClient(options);
+  }
+
+  private resolveConnection(adapter: AgentAdapter): AgentConnection {
+    if (this.connection && this.connectionFactory) {
+      throw new Error("Use either withConnection() or withConnectionFactory(), not both");
+    }
+
+    if (this.connection) {
+      return this.connection;
+    }
+
+    if (this.connectionFactory) {
+      return this.connectionFactory(adapter);
+    }
+
+    return adapter.connectionType === "acp"
+      ? new AcpConnection()
+      : new PtyConnection(adapter.createPtyParser?.());
   }
 }
