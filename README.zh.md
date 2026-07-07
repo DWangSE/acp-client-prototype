@@ -181,6 +181,44 @@ pnpm extension-test <agent-id>
 
 ---
 
+### 4. 内置终端 Client Methods
+
+ACP Agent 可以通过标准 `terminal/*` client methods 调用宿主客户端的终端能力：
+
+| 方法                     | 行为                                                   |
+| ------------------------ | ------------------------------------------------------ |
+| `terminal/create`        | 启动本地进程并返回 `terminalId`。                      |
+| `terminal/output`        | 返回已捕获输出、截断状态，以及可用时的退出状态。       |
+| `terminal/wait_for_exit` | 等待进程退出并返回退出状态。                           |
+| `terminal/kill`          | 终止进程，但保留 terminal，供 Agent 继续读取最终输出。 |
+| `terminal/release`       | 释放终端资源，并使对应 `terminalId` 对后续调用失效。   |
+
+`AcpClientBuilder` 默认注册 `TerminalHandler`。上层 orchestrator/coordinator 可以替换或包装它，以实现审计、策略控制、远程执行，或由协调层托管终端生命周期：
+
+```typescript
+const client = new AcpClientBuilder()
+  .withAgent("gemini")
+  .withTerminalHandler(new AuditedTerminalHandler(new TerminalHandler()))
+  .build();
+
+const coordinatorOwnedClient = new AcpClientBuilder()
+  .withAgent("gemini")
+  .registerMethodHandler("terminal", new CoordinatorTerminalHandler())
+  .build();
+```
+
+常规终端能力替换优先使用 `withTerminalHandler()`。如果上层需要接管任意 client method 前缀或精确方法名，可以使用 `registerMethodHandler(methodNameOrPrefix, handler)`。
+
+可以用终端方法测试验证完整生命周期。默认使用 `mock-driver`，也可以通过参数或 `TERMINAL_TEST_AGENT` 指定真实 Agent：
+
+```bash
+pnpm terminal-test
+pnpm terminal-test <agent-id>
+TERMINAL_TEST_AGENT=gemini pnpm terminal-test
+```
+
+---
+
 ## 已支持的适配器列表
 
 | Agent 标识    | 连接方式 | 鉴权策略         | 描述                                          |
@@ -211,8 +249,11 @@ src/
 ├── hook-gate/        # 事件点位定义与拦截回调契约 (解耦)
 └── session/          # 会话存储与管理
 tests/
-├── driver.test.ts    # A方向 Driver 契约集成测试层
-└── hello.ts          # 分离出的独立测试层
+├── driver.test.ts              # A方向 Driver 契约集成测试层
+├── extension-method.test.ts    # 基于 MCP 的扩展方法集成测试
+├── file-handler.test.ts        # 文件系统 client method 集成测试
+├── terminal-method.test.ts     # 终端 client method 生命周期集成测试
+└── hello.ts                    # 分离出的独立测试层
 ```
 
 ---
@@ -239,6 +280,7 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 | ---------------------- | -------------------------------------------------------------------------- |
 | `VERBOSE=1`            | 开启详细的调试与状态转移日志                                               |
 | `AUTO_APPROVE=1`       | 自动批准所有 Agent 对文件系统、终端操作的授权请求                          |
+| `TERMINAL_TEST_AGENT`  | 覆盖 `pnpm terminal-test` 使用的 Agent；默认使用 `mock-driver`             |
 | `CODEX_HOME`           | 指向自定义目录以覆盖全局 Codex 配置 (例如 `./.codex`)                      |
 | `OPENCODE_CONFIG`      | 指向自定义 JSON 配置文件以覆盖全局 OpenCode 配置 (例如 `./.opencode.json`) |
 | `GOOSE_PATH_ROOT`      | 指向自定义目录以隔离/沙箱化 Goose 的配置、状态和数据目录 (例如 `./.goose`) |
