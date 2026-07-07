@@ -84,51 +84,31 @@ export class AcpConnection implements AgentConnection {
         this.emitEvent(updateType as any, params);
       },
       requestPermission: async (params) => {
-        if (this.methodRouter)
-          return await this.methodRouter.route("session/request_permission", params);
-        this.emitEvent("permission_request", params);
-        return { outcome: "denied" };
+        return await this.routeClientMethod("session/request_permission", params);
       },
       readTextFile: async (params) => {
-        if (this.methodRouter) return await this.methodRouter.route("fs/read_text_file", params);
-        this.emitEvent("fs/read_text_file" as any, params);
-        return { content: "" };
+        return await this.routeClientMethod("fs/read_text_file", params);
       },
       writeTextFile: async (params) => {
-        if (this.methodRouter) return await this.methodRouter.route("fs/write_text_file", params);
-        this.emitEvent("fs/write_text_file" as any, params);
-        return {};
+        return await this.routeClientMethod("fs/write_text_file", params);
       },
       createTerminal: async (params) => {
-        if (this.methodRouter) return await this.methodRouter.route("terminal/create", params);
-        this.emitEvent("terminal/create" as any, params);
-        return { terminalId: "term_stub" };
+        return await this.routeClientMethod("terminal/create", params);
       },
       terminalOutput: async (params) => {
-        if (this.methodRouter) return await this.methodRouter.route("terminal/output", params);
-        this.emitEvent("terminal/output" as any, params);
-        return { output: "", truncated: false };
+        return await this.routeClientMethod("terminal/output", params);
       },
       waitForTerminalExit: async (params) => {
-        if (this.methodRouter)
-          return await this.methodRouter.route("terminal/wait_for_exit", params);
-        this.emitEvent("terminal/wait_for_exit" as any, params);
-        return { exitCode: 0, signal: null };
+        return await this.routeClientMethod("terminal/wait_for_exit", params);
       },
       killTerminal: async (params) => {
-        if (this.methodRouter) return await this.methodRouter.route("terminal/kill", params);
-        this.emitEvent("terminal/kill" as any, params);
-        return {};
+        return await this.routeClientMethod("terminal/kill", params);
       },
       releaseTerminal: async (params) => {
-        if (this.methodRouter) return await this.methodRouter.route("terminal/release", params);
-        this.emitEvent("terminal/release" as any, params);
-        return {};
+        return await this.routeClientMethod("terminal/release", params);
       },
       extMethod: async (method: string, params: Record<string, unknown>) => {
-        if (this.methodRouter) return await this.methodRouter.route(method, params);
-        this.emitEvent(method as any, params);
-        return {};
+        return await this.routeClientMethod(method, params);
       },
     };
 
@@ -147,6 +127,16 @@ export class AcpConnection implements AgentConnection {
   private emitEvent(type: ConnectionEvent["type"], payload: any) {
     const event: ConnectionEvent = { type, payload };
     this.eventEmitter.emit("event", event);
+  }
+
+  private async routeClientMethod(method: string, params: any): Promise<any> {
+    if (!this.methodRouter) {
+      throw new TransportError(
+        `No client method router configured for ACP client method: ${method}`
+      );
+    }
+
+    return await this.methodRouter.route(method, params);
   }
 
   async disconnect(): Promise<void> {

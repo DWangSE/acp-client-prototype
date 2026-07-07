@@ -71,6 +71,8 @@ src/
 - **`AcpConnection`**: 内部集成 `@agentclientprotocol/sdk` 的 `ClientSideConnection`，处理标准 ACP 握手与通信。
 - **`PtyConnection`**: 使用 `node-pty` 派生伪终端进程，支持 Aider 等不支持 ACP 的 Agent，通过字节流模拟消息更新。
 
+`AcpConnection` 只负责协议传输和 Agent -> Client callback 路由，不提供文件、权限、终端或扩展方法的 stub fallback。通过 `AcpClientBuilder` / `AcpClient` 创建时，client 会自动调用 `setMethodRouter(...)`。如果上层直接使用 `AcpConnection`，必须先设置 method router；否则 ACP agent 调用 client method 时会 fail fast。
+
 ---
 
 ## 3. 适配器层 (`src/adapter/`)

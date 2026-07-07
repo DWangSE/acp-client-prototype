@@ -98,6 +98,13 @@ The root export is organized around stable integration points:
 
 Implementation details such as the extension MCP server internals and private parser helpers are intentionally not part of the public root API.
 
+#### Client Method Routing Policy
+
+`AcpClientBuilder` always installs a `ClientMethodRouter` before the connection is used. If an
+upper layer constructs an `AcpConnection` directly, it must call `setMethodRouter(...)` before
+allowing an ACP agent to invoke client methods. Missing routers or missing handlers fail fast;
+the connection does not return stub file, permission, terminal, or extension method results.
+
 For production integration, the bundled handlers and stores are defaults only. Upper-layer
 orchestrators can replace the method handlers, auth executor, session manager, or transport
 connection during construction:
