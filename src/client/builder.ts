@@ -77,7 +77,10 @@ export class AcpClientBuilder {
       throw new Error(`Unknown agent: ${this.agentId}`);
     }
 
-    const connection = adapter.connectionType === "acp" ? new AcpConnection() : new PtyConnection();
+    const connection =
+      adapter.connectionType === "acp"
+        ? new AcpConnection()
+        : new PtyConnection(adapter.createPtyParser?.());
     const authLayer = new AuthLayer();
     const sessionManager = new MemorySessionStore();
     const methodRouter = new ClientMethodRouter();
