@@ -43,7 +43,7 @@ src/
 ├── client-methods/           ← 客户端能力实现 (Agent -> Client)
 │   ├── filesystem-handler.ts ← 文件系统读写（带沙箱）
 │   ├── permission-handler.ts ← 交互式权限确认
-│   ├── terminal-handler.ts   ← 真实终端创建
+│   ├── terminal-handler.ts   ← 真实终端生命周期管理
 │   └── router.ts             ← 能力路由分发
 ├── connection/               ← 连接抽象层
 │   ├── acp-connection.ts     ← ACP 连接 (基于 @agentclientprotocol/sdk)
@@ -65,6 +65,7 @@ src/
 ## 2. 连接层 (`src/connection/`)
 
 ### `AgentConnection` 接口
+
 统一了 ACP (JSON-RPC) 和 PTY (字节流) 的通信范式。
 
 - **`AcpConnection`**: 内部集成 `@agentclientprotocol/sdk` 的 `ClientSideConnection`，处理标准 ACP 握手与通信。
@@ -75,7 +76,9 @@ src/
 ## 3. 适配器层 (`src/adapter/`)
 
 ### `AgentAdapter`
+
 封装每个 Agent 的特有配置，包括：
+
 - `resolveCommand()`: 解析启动命令与参数。
 - `resolveEnv()`: 获取所需的凭证环境变量（如 `GEMINI_API_KEY`）。
 - `resolveAuthStrategy()`: 声明认证策略。
@@ -86,7 +89,9 @@ src/
 ## 4. 认证层 (`src/auth/`)
 
 ### `AuthLayer`
+
 通过策略模式处理不同 Agent 的认证差异：
+
 - **`env-auto`**: 自动从环境变量匹配凭证。
 - **`interactive`**: 如果有多个认证方式，通过命令行提示用户选择。
 - **`none` / `pre-configured`**: 跳过认证调用。
@@ -98,11 +103,15 @@ src/
 在 Direction A 运行时设计中，Client/Driver 不负责任何策略逻辑和注册表。它扮演纯粹的事件源，并提供一级同步拦截回调。
 
 ### 事件发布 (Event Publication)
+
 `AcpClient` 继承自 Node 的 `EventEmitter`，在特定的物理生命周期时点派发只读事件，外部可采用非阻塞方式订阅：
+
 - **生命周期时点**：`pre:connect`、`post:initialize`、`pre:prompt`、`post:session:create` 等。
 
 ### 拦截器 (Interceptors)
+
 拦截器采用 **Unary Callback** 一级回调机制，由外部传入函数实现同步的数据篡改过滤或阻断判断，而不由 Client 内部运行拦截器优先级聚合决策：
+
 - **`output`**: 拦截并修改输出流报文（ConnectionEvent），可返回 `null` 执行丢弃。
 - **`permission`**: 拦截工具/敏感指令执行（PermissionRequest），同步返回 `boolean` 以表示授权通过与否。
 
@@ -111,9 +120,49 @@ src/
 ## 6. 客户端方法 (`src/client-methods/`)
 
 实现了 Agent 回调 Client 端的真实能力：
+
 - **文件系统**: 支持 `fs/read_text_file` 和 `fs/write_text_file`，通过 baseDir 强制进行路径沙箱隔离。
 - **权限**: 通过 `@inquirer/prompts` 提供交互式确认，支持 `AUTO_APPROVE` 环境变量。
-- **终端**: 真实派生本地 Shell 进程。
+- **终端**: 通过 `TerminalHandler` 实现完整 `terminal/*` 生命周期方法，真实派生本地进程并管理输出、退出状态、终止和释放。
+
+### `TerminalHandler`
+
+`TerminalHandler` 是默认的 ACP terminal client method 处理器。它支持以下方法：
+
+| 方法                     | 说明                                                    |
+| ------------------------ | ------------------------------------------------------- |
+| `terminal/create`        | 创建本地进程，记录输出缓冲区，并返回 `terminalId`。     |
+| `terminal/output`        | 返回当前累计输出、是否截断，以及可用时的 `exitStatus`。 |
+| `terminal/wait_for_exit` | 等待进程退出并返回 `{ exitCode, signal }`。             |
+| `terminal/kill`          | 终止进程但不释放 terminal，使 Agent 仍可读取最终输出。  |
+| `terminal/release`       | 释放 terminal 资源；释放后同一 `terminalId` 不再可用。  |
+
+默认实现由 `AcpClientBuilder` 注册到 `terminal` 方法前缀：
+
+```typescript
+const client = new AcpClientBuilder().withAgent("gemini").build();
+```
+
+上层 orchestrator/coordinator 可以通过 Builder 注册自己的处理器。常见做法是包装默认实现以增加审计、策略校验或远程执行转发：
+
+```typescript
+const client = new AcpClientBuilder()
+  .withAgent("gemini")
+  .withTerminalHandler(new AuditedTerminalHandler(new TerminalHandler()))
+  .build();
+```
+
+如果需要接管任意 client method 前缀或精确方法名，可以使用通用注册接口：
+
+```typescript
+const client = new AcpClientBuilder()
+  .withAgent("gemini")
+  .registerMethodHandler("terminal", new CoordinatorTerminalHandler())
+  .registerMethodHandler("custom/exact_method", new ExactMethodHandler())
+  .build();
+```
+
+终端集成测试位于 `tests/terminal-method.test.ts`。该测试通过 prompt 指示 Agent 使用 `terminal/create`、`terminal/output`、`terminal/wait_for_exit`、`terminal/kill` 和 `terminal/release`，并在 Client 侧包装真实 `TerminalHandler` 进行审计断言。默认 driver 是 `mock-driver`，也可以用 `TERMINAL_TEST_AGENT` 或命令行参数指定真实 Agent。
 
 ---
 
@@ -122,6 +171,7 @@ src/
 `AcpClient` 负责将上述所有模块编排在一起。
 
 **使用示例**:
+
 ```typescript
 const client = new AcpClient({
   adapter,
@@ -137,8 +187,8 @@ const client = new AcpClient({
     permission: async (request) => {
       // 外部同步安全拦截与阻断判定
       return true;
-    }
-  }
+    },
+  },
 });
 
 // 外部事件监听
@@ -160,7 +210,9 @@ for await (const event of turn) {
 ## 8. 类型定义与错误处理
 
 ### `src/core/errors.ts`
+
 引入了统一的错误继承体系：
+
 - `AgentSpawnError`: 启动失败。
 - `AuthError`: 认证失败。
 - `PermissionDeniedError`: 权限或沙箱违规。
@@ -176,4 +228,3 @@ for await (const event of turn) {
 - **`MockDriver` 实现**：作为 Mock 包装实现，完全实现了该接口。能够根据 Prompt 模拟 succeeded/failed 状态的执行，并在结果中正确携带补丁产物引用（`ArtifactRef`）与审计日志引用。
 
 ---
-

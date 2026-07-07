@@ -17,6 +17,7 @@ export class AcpClientBuilder {
   private verbose: boolean = false;
   private extensionConfigPath?: string;
   private handlers: Record<string, ClientMethodHandler> = {};
+  private terminalHandler?: ClientMethodHandler;
   private autoApprove: boolean = false;
   private sandboxDir: string = process.cwd();
   private interceptors?: ClientInterceptors;
@@ -51,6 +52,16 @@ export class AcpClientBuilder {
     return this;
   }
 
+  registerMethodHandler(methodNameOrPrefix: string, handler: ClientMethodHandler): this {
+    this.handlers[methodNameOrPrefix] = handler;
+    return this;
+  }
+
+  withTerminalHandler(handler: ClientMethodHandler): this {
+    this.terminalHandler = handler;
+    return this;
+  }
+
   withInterceptors(interceptors: ClientInterceptors): this {
     this.interceptors = interceptors;
     return this;
@@ -77,7 +88,7 @@ export class AcpClientBuilder {
       "session",
       new PermissionHandler(this.autoApprove || process.env.AUTO_APPROVE === "1")
     );
-    methodRouter.register("terminal", new TerminalHandler());
+    methodRouter.register("terminal", this.terminalHandler ?? new TerminalHandler());
 
     // Register user defined handlers
     for (const [method, handler] of Object.entries(this.handlers)) {

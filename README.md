@@ -181,6 +181,44 @@ pnpm extension-test <agent-id>
 
 ---
 
+### 4. Built-in Terminal Client Methods
+
+ACP agents can call the client's terminal capability through the standard `terminal/*` client methods:
+
+| Method                   | Behavior                                                                 |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `terminal/create`        | Starts a local process and returns a `terminalId`.                       |
+| `terminal/output`        | Returns captured output, truncation state, and exit status when present. |
+| `terminal/wait_for_exit` | Waits for the process to exit and returns its exit status.               |
+| `terminal/kill`          | Terminates the process while keeping the terminal available for output.  |
+| `terminal/release`       | Frees terminal resources and invalidates the `terminalId`.               |
+
+`AcpClientBuilder` registers `TerminalHandler` by default. Upper-layer orchestrators can replace or wrap it for auditing, policy checks, remote execution, or coordinator-owned terminal management:
+
+```typescript
+const client = new AcpClientBuilder()
+  .withAgent("gemini")
+  .withTerminalHandler(new AuditedTerminalHandler(new TerminalHandler()))
+  .build();
+
+const coordinatorOwnedClient = new AcpClientBuilder()
+  .withAgent("gemini")
+  .registerMethodHandler("terminal", new CoordinatorTerminalHandler())
+  .build();
+```
+
+Use `withTerminalHandler()` for the common terminal override path. Use `registerMethodHandler(methodNameOrPrefix, handler)` when a coordinator needs to own any client method prefix or exact method name.
+
+To verify the terminal lifecycle, run the terminal method test. It uses `mock-driver` by default and can target a real agent with an argument or `TERMINAL_TEST_AGENT`:
+
+```bash
+pnpm terminal-test
+pnpm terminal-test <agent-id>
+TERMINAL_TEST_AGENT=gemini pnpm terminal-test
+```
+
+---
+
 ## Supported Adapters
 
 | Agent         | Connection | Auth Strategy    | Description                             |
@@ -211,8 +249,11 @@ src/
 ├── hook-gate/        # Event schemas & interceptor callbacks (Decoupled)
 └── session/          # Session cache & store
 tests/
-├── driver.test.ts    # Direction A Driver contract integration tests
-└── hello.ts          # Separated testing layer
+├── driver.test.ts              # Direction A Driver contract integration tests
+├── extension-method.test.ts    # MCP-backed extension method integration test
+├── file-handler.test.ts        # Filesystem client method integration test
+├── terminal-method.test.ts     # Terminal client method lifecycle integration test
+└── hello.ts                    # Separated testing layer
 ```
 
 ---
@@ -239,6 +280,7 @@ npm run build && npm run build:test && node dist/tests/driver.test.js
 | ---------------------- | ------------------------------------------------------------------------------------------------ |
 | `VERBOSE=1`            | Enable detailed debug logging and state outputs                                                  |
 | `AUTO_APPROVE=1`       | Automatically approve all agent filesystem & terminal requests                                   |
+| `TERMINAL_TEST_AGENT`  | Override the agent used by `pnpm terminal-test`; defaults to `mock-driver`                       |
 | `CODEX_HOME`           | Point to a custom directory to override global Codex configuration (e.g., `./.codex`)            |
 | `OPENCODE_CONFIG`      | Point to a custom JSON configuration file to override OpenCode config (e.g., `./.opencode.json`) |
 | `GOOSE_PATH_ROOT`      | Point to a custom folder to sandbox Goose configuration, state, and data (e.g., `./.goose`)      |
