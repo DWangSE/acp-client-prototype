@@ -22,10 +22,15 @@ Powered by `@agentclientprotocol/sdk`.
 
 ## Quick Start
 
+### 0. Prerequisites
+
+- Node.js `>=22.22.1`
+- pnpm `>=11.8.0`
+
 ### 1. Install dependencies
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 2. Configure credentials
@@ -38,7 +43,7 @@ cp .env.example .env
 ### 3. Run Separated Integration Test
 
 ```bash
-npm run hello -- gemini "Hello World"
+pnpm hello gemini "Hello World"
 ```
 
 ---
@@ -146,7 +151,7 @@ The client transitions through the following states, queryable via `client.getSt
 
 #### Type-Safe Event Reference
 
-The `AcpClient` class extends Node's `EventEmitter` with **strictly typed method overrides** (`on`, `once`, `off`). Modern IDEs (like VS Code) will automatically provide full autocomplete and type validation for both event names and their payload objects.
+The `AcpClient` class extends Node's `EventEmitter` with typed overrides for `emit`, `on`, and `once`. Modern IDEs (like VS Code) will automatically provide autocomplete and type validation for these event names and payload objects.
 
 Below is the complete registry of typed events emitted by the client:
 
@@ -155,11 +160,14 @@ Below is the complete registry of typed events emitted by the client:
 | `stateChange`         | `(newState: ClientState, oldState: ClientState)` | Triggered on any connection or execution state transition.                   |
 | `event`               | `(event: ConnectionEvent)`                       | Raw, unmodified wrapper for any packet coming from the connection.           |
 | `agent_message_chunk` | `(payload: any)`                                 | Live textual answer tokens streamed from the Agent.                          |
+| `agentMessage`        | `(payload: any)`                                 | Compatibility alias emitted for `agent_message_chunk`.                       |
 | `agent_thought_chunk` | `(payload: any)`                                 | Live thinking process tokens streamed from reasoning-capable Agents.         |
 | `tool_call`           | `(payload: any)`                                 | Signals that the Agent wants to invoke a specific client/client method/tool. |
 | `tool_call_update`    | `(payload: any)`                                 | Signals the execution result status of a requested tool call.                |
 | `stderr`              | `(payload: any)`                                 | Raw standard error diagnostics emitted by the underlying Agent process.      |
-| `permission_request`  | `(payload: any)`                                 | Raised when an Agent requests permission to run interactive commands.        |
+
+Lifecycle hook events such as `pre:connect`, `post:initialize`, `pre:prompt`, and
+`post:disconnect` are also emitted through the same `EventEmitter` interface.
 
 ```typescript
 // Strict autocompleted subscription
@@ -212,6 +220,7 @@ Write a custom class implementing `ClientMethodHandler`:
 
 ```typescript
 import { ClientMethodHandler } from "acp-client-prototype";
+import { RequestError } from "@agentclientprotocol/sdk";
 
 class MyCustomHandler implements ClientMethodHandler {
   async handle(method: string, params: any): Promise<any> {
@@ -220,10 +229,14 @@ class MyCustomHandler implements ClientMethodHandler {
         greeting: `Hello ${params.name || "User"}, styled using: ${params.style || "plain"}`,
       };
     }
-    throw new Error(`Unsupported custom method: ${method}`);
+    throw RequestError.methodNotFound(method);
   }
 }
 ```
+
+For Agent-visible client methods and MCP tool calls, throw ACP SDK `RequestError`
+instances when you need the Agent to see structured JSON-RPC `code`, `message`, and
+`data`. Plain JavaScript errors are treated as internal failures by the protocol boundary.
 
 #### 3. Register Custom Capabilities
 
@@ -289,17 +302,19 @@ TERMINAL_TEST_AGENT=gemini pnpm terminal-test
 
 ## Supported Adapters
 
-| Agent         | Connection | Auth Strategy    | Description                             |
-| ------------- | ---------- | ---------------- | --------------------------------------- |
-| **gemini**    | `acp`      | `env-auto`       | Google Gemini via `gemini-cli`          |
-| **claude**    | `acp`      | `none`           | Anthropic Claude via `claude-agent-acp` |
-| **copilot**   | `acp`      | `none`           | GitHub Copilot via `@github/copilot`    |
-| **codex**     | `acp`      | `none`           | OpenAI Codex via `codex-acp`            |
-| **opencode**  | `acp`      | `pre-configured` | OpenCode AI via `opencode-ai`           |
-| **goose**     | `acp`      | `pre-configured` | Block/Square Goose via `goose`          |
-| **kiro**      | `acp`      | `pre-configured` | AWS Kiro AI via `kiro-cli`              |
-| **codebuddy** | `acp`      | `env-auto`       | Tencent CodeBuddy via `codebuddy-code`  |
-| **aider**     | `pty`      | `pre-configured` | AI coding assistant via PTY fallback    |
+| Agent           | Connection | Auth Strategy    | Description                             |
+| --------------- | ---------- | ---------------- | --------------------------------------- |
+| **gemini**      | `acp`      | `auto`           | Google Gemini via `gemini-cli`          |
+| **claude**      | `acp`      | `auto`           | Anthropic Claude via `claude-agent-acp` |
+| **copilot**     | `acp`      | `none`           | GitHub Copilot via `@github/copilot`    |
+| **codex**       | `acp`      | `auto`           | OpenAI Codex via `codex-acp`            |
+| **kimi**        | `acp`      | `auto`           | Moonshot Kimi Code via `kimi-code`      |
+| **opencode**    | `acp`      | `pre-configured` | OpenCode AI via `opencode-ai`           |
+| **goose**       | `acp`      | `pre-configured` | Block/Square Goose via `goose`          |
+| **kiro**        | `acp`      | `pre-configured` | AWS Kiro AI via `kiro-cli`              |
+| **codebuddy**   | `acp`      | `auto`           | Tencent CodeBuddy via `codebuddy-code`  |
+| **aider**       | `pty`      | `pre-configured` | AI coding assistant via PTY fallback    |
+| **mock-driver** | `acp`      | `none`           | Local ACP mock driver used by tests     |
 
 ---
 
@@ -307,13 +322,13 @@ TERMINAL_TEST_AGENT=gemini pnpm terminal-test
 
 ```
 src/
-├── adapter/          # Agent definitions, quirks, & extensible registry
 ├── auth/             # Environment-auto, interactive, pre-configured strategies
 ├── client/           # Builder pattern, AcpClient lifecycle orchestrator
 ├── client-methods/   # Standard (FS, Terminal, Session) & Custom Extensions
 ├── connection/       # Protocol drivers (JSON-RPC / PTY abstraction)
 ├── core/             # Errors, shared types, ACP schemas
 ├── driver/           # Direction A Driver Wrapper layer (MockDriver)
+├── driver-adapter/   # Agent definitions, quirks, and extensible registry
 ├── hook-gate/        # Event schemas & interceptor callbacks (Decoupled)
 └── session/          # Session cache & store
 tests/
@@ -335,7 +350,9 @@ To support end-to-end multi-agent BCD pipelines, the micro-level `AcpClient` is 
 To run the standalone driver test suite:
 
 ```bash
-npm run build && npm run build:test && node dist/tests/driver.test.js
+pnpm run build
+pnpm run build:test
+node dist/tests/driver.test.js
 ```
 
 ---

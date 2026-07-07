@@ -22,10 +22,15 @@
 
 ## 快速开始
 
+### 0. 环境要求
+
+- Node.js `>=22.22.1`
+- pnpm `>=11.8.0`
+
 ### 1. 安装依赖
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 2. 配置凭证
@@ -38,7 +43,7 @@ cp .env.example .env
 ### 3. 运行隔离的集成测试
 
 ```bash
-npm run hello -- gemini "Hello World"
+pnpm hello gemini "Hello World"
 ```
 
 ---
@@ -140,20 +145,22 @@ const client = new AcpClientBuilder()
 
 #### 强类型事件参考手册 (Type-Safe Event Reference)
 
-`AcpClient` 类通过**严格的 TypeScript 方法重载**重写了 Node 原生的 `EventEmitter` 方法（如 `on`, `once`, `off`）。现代 IDE（如 VS Code）会自动提供事件名拼写补全，并对事件的回调参数（Payload）提供完整的类型校验与结构提示。
+`AcpClient` 类为 Node 原生 `EventEmitter` 的 `emit`、`on` 和 `once` 提供了 TypeScript 方法重载。现代 IDE（如 VS Code）会对这些事件名和回调参数提供补全与类型提示。
 
 以下是客户端支持的完整类型化事件表：
 
-| 事件名称 (Event Name) | 回调参数类型 (Parameter Type)                    | 事件描述                                                   |
-| --------------------- | ------------------------------------------------ | ---------------------------------------------------------- |
-| `stateChange`         | `(newState: ClientState, oldState: ClientState)` | 任何连接状态、会话执行状态发生转换时触发。                 |
-| `event`               | `(event: ConnectionEvent)`                       | 底层连接层收到的所有原始数据包包头包装。                   |
-| `agent_message_chunk` | `(payload: any)`                                 | Agent 流式返回的文本消息 Token 片段。                      |
-| `agent_thought_chunk` | `(payload: any)`                                 | 支持推理思维链的 Agent 正在流式输出的思考 Token 片段。     |
-| `tool_call`           | `(payload: any)`                                 | Agent 请求调用特定的主机/客户端工具/方法。                 |
-| `tool_call_update`    | `(payload: any)`                                 | 被调用的工具执行完成、失败等执行状态更新。                 |
-| `stderr`              | `(payload: any)`                                 | 远端 Agent 进程抛出的原始标准错误诊断输出。                |
-| `permission_request`  | `(payload: any)`                                 | Agent 请求高风险操作（如运行终端脚本）时触发的交互式授权。 |
+| 事件名称 (Event Name) | 回调参数类型 (Parameter Type)                    | 事件描述                                               |
+| --------------------- | ------------------------------------------------ | ------------------------------------------------------ |
+| `stateChange`         | `(newState: ClientState, oldState: ClientState)` | 任何连接状态、会话执行状态发生转换时触发。             |
+| `event`               | `(event: ConnectionEvent)`                       | 底层连接层收到的所有原始数据包包装。                   |
+| `agent_message_chunk` | `(payload: any)`                                 | Agent 流式返回的文本消息 Token 片段。                  |
+| `agentMessage`        | `(payload: any)`                                 | `agent_message_chunk` 的兼容别名。                     |
+| `agent_thought_chunk` | `(payload: any)`                                 | 支持推理思维链的 Agent 正在流式输出的思考 Token 片段。 |
+| `tool_call`           | `(payload: any)`                                 | Agent 请求调用特定的主机/客户端工具/方法。             |
+| `tool_call_update`    | `(payload: any)`                                 | 被调用的工具执行完成、失败等执行状态更新。             |
+| `stderr`              | `(payload: any)`                                 | 远端 Agent 进程抛出的原始标准错误诊断输出。            |
+
+生命周期 hook 事件也通过同一个 `EventEmitter` 暴露，例如 `pre:connect`、`post:initialize`、`pre:prompt` 和 `post:disconnect`。
 
 ```typescript
 // 支持拼写补全与类型校验
@@ -206,6 +213,7 @@ methods:
 
 ```typescript
 import { ClientMethodHandler } from "acp-client-prototype";
+import { RequestError } from "@agentclientprotocol/sdk";
 
 class MyCustomHandler implements ClientMethodHandler {
   async handle(method: string, params: any): Promise<any> {
@@ -214,10 +222,12 @@ class MyCustomHandler implements ClientMethodHandler {
         greeting: `Hello ${params.name || "User"}, styled using: ${params.style || "plain"}`,
       };
     }
-    throw new Error(`Unsupported custom method: ${method}`);
+    throw RequestError.methodNotFound(method);
   }
 }
 ```
+
+对于 Agent 可见的 client method 或 MCP tool call，如果希望 Agent 看见结构化的 JSON-RPC `code`、`message` 和 `data`，应抛出 ACP SDK 的 `RequestError`。普通 JavaScript `Error` 会在协议边界被视为内部错误。
 
 #### 第三步：使用 Builder 注册
 
@@ -283,17 +293,19 @@ TERMINAL_TEST_AGENT=gemini pnpm terminal-test
 
 ## 已支持的适配器列表
 
-| Agent 标识    | 连接方式 | 鉴权策略         | 描述                                          |
-| ------------- | -------- | ---------------- | --------------------------------------------- |
-| **gemini**    | `acp`    | `env-auto`       | 通过 `gemini-cli` 连接 Google Gemini          |
-| **claude**    | `acp`    | `none`           | 通过 `claude-agent-acp` 连接 Anthropic Claude |
-| **copilot**   | `acp`    | `none`           | 通过 `@github/copilot` 连接 GitHub Copilot    |
-| **codex**     | `acp`    | `none`           | 通过 `codex-acp` 连接 OpenAI Codex            |
-| **opencode**  | `acp`    | `pre-configured` | 通过 `opencode-ai` 连接 OpenCode AI           |
-| **goose**     | `acp`    | `pre-configured` | 通过 `goose` 连接 Block/Square Goose AI       |
-| **kiro**      | `acp`    | `pre-configured` | 通过 `kiro-cli` 连接 AWS Kiro AI              |
-| **codebuddy** | `acp`    | `env-auto`       | 通过 `codebuddy-code` 连接腾讯 CodeBuddy      |
-| **aider**     | `pty`    | `pre-configured` | 通过 PTY 伪终端兜底连接 AI 编码助手 Aider     |
+| Agent 标识      | 连接方式 | 鉴权策略         | 描述                                          |
+| --------------- | -------- | ---------------- | --------------------------------------------- |
+| **gemini**      | `acp`    | `auto`           | 通过 `gemini-cli` 连接 Google Gemini          |
+| **claude**      | `acp`    | `auto`           | 通过 `claude-agent-acp` 连接 Anthropic Claude |
+| **copilot**     | `acp`    | `none`           | 通过 `@github/copilot` 连接 GitHub Copilot    |
+| **codex**       | `acp`    | `auto`           | 通过 `codex-acp` 连接 OpenAI Codex            |
+| **kimi**        | `acp`    | `auto`           | 通过 `kimi-code` 连接 Moonshot Kimi Code      |
+| **opencode**    | `acp`    | `pre-configured` | 通过 `opencode-ai` 连接 OpenCode AI           |
+| **goose**       | `acp`    | `pre-configured` | 通过 `goose` 连接 Block/Square Goose AI       |
+| **kiro**        | `acp`    | `pre-configured` | 通过 `kiro-cli` 连接 AWS Kiro AI              |
+| **codebuddy**   | `acp`    | `auto`           | 通过 `codebuddy-code` 连接腾讯 CodeBuddy      |
+| **aider**       | `pty`    | `pre-configured` | 通过 PTY 伪终端兜底连接 AI 编码助手 Aider     |
+| **mock-driver** | `acp`    | `none`           | 测试默认使用的本地 ACP mock driver            |
 
 ---
 
@@ -301,13 +313,13 @@ TERMINAL_TEST_AGENT=gemini pnpm terminal-test
 
 ```
 src/
-├── adapter/          # Agent 定义、差异抹平及扩展注册表
 ├── auth/             # 统一鉴权策略（自动、交互、预配置等）
 ├── client/           # Builder 模式实现与 Client 核心生命周期编排器
 ├── client-methods/   # 宿主内置功能 (FS 沙箱、虚拟终端等) 与自定义扩展处理器
 ├── connection/       # 底层连接驱动（ACP JSON-RPC / PTY）
 ├── core/             # 通用错误、类型定义及协议规范定义
 ├── driver/           # A方向 Driver 包装层 (MockDriver)
+├── driver-adapter/   # Agent 定义、差异抹平及扩展注册表
 ├── hook-gate/        # 事件点位定义与拦截回调契约 (解耦)
 └── session/          # 会话存储与管理
 tests/
@@ -329,7 +341,9 @@ tests/
 执行独立的 A 方向驱动集成测试契约套件：
 
 ```bash
-npm run build && npm run build:test && node dist/tests/driver.test.js
+pnpm run build
+pnpm run build:test
+node dist/tests/driver.test.js
 ```
 
 ---
