@@ -1,5 +1,6 @@
 import { ClientMethodHandler } from "./interface.js";
 import { select } from "@inquirer/prompts";
+import { invalidParams, methodNotFound } from "./error-utils.js";
 
 export class PermissionHandler implements ClientMethodHandler {
   constructor(private readonly autoApprove: boolean = false) {}
@@ -10,11 +11,17 @@ export class PermissionHandler implements ClientMethodHandler {
       const message = params.message || params.toolCall?.description || "";
       const options = params.options || [];
 
+      if (!Array.isArray(options) || options.length === 0) {
+        throw invalidParams("session/request_permission requires at least one option", {
+          options,
+        });
+      }
+
       if (this.autoApprove) {
         return {
           outcome: {
             outcome: "selected",
-            optionId: options[0]?.optionId || "proceed_once",
+            optionId: options[0].optionId,
           },
         };
       }
@@ -22,13 +29,22 @@ export class PermissionHandler implements ClientMethodHandler {
       console.log(`\n[Permission Request] ${title}`);
       if (message) console.log(message);
 
-      const choice = await select({
-        message: "Choose an action:",
-        choices: options.map((o: any) => ({
-          name: o.name || o.label || o.optionId,
-          value: o.optionId,
-        })),
-      });
+      let choice: string;
+      try {
+        choice = await select({
+          message: "Choose an action:",
+          choices: options.map((o: any) => ({
+            name: o.name || o.label || o.optionId,
+            value: o.optionId,
+          })),
+        });
+      } catch {
+        return {
+          outcome: {
+            outcome: "cancelled",
+          },
+        };
+      }
 
       return {
         outcome: {
@@ -37,6 +53,6 @@ export class PermissionHandler implements ClientMethodHandler {
         },
       };
     }
-    throw new Error(`Unsupported permission method: ${method}`);
+    throw methodNotFound(method);
   }
 }

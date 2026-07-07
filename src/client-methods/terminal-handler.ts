@@ -1,6 +1,7 @@
 import { ClientMethodHandler } from "./interface.js";
 import spawn from "cross-spawn";
 import type { ChildProcess } from "node:child_process";
+import { internalError, invalidParams, methodNotFound, resourceNotFound } from "./error-utils.js";
 
 interface TerminalExitStatus {
   exitCode?: number | null;
@@ -48,11 +49,26 @@ export class TerminalHandler implements ClientMethodHandler {
       case "terminal/release":
         return this.release(params);
       default:
-        throw new Error(`Unsupported terminal method: ${method}`);
+        throw methodNotFound(method);
     }
   }
 
   private create(params: any): { terminalId: string } {
+    if (!params || typeof params !== "object" || Array.isArray(params)) {
+      throw invalidParams("terminal/create requires object params", { params });
+    }
+    if (typeof params.command !== "string" || params.command.length === 0) {
+      throw invalidParams("terminal/create requires a non-empty command", {
+        command: params.command,
+      });
+    }
+    if (params.args !== undefined && !Array.isArray(params.args)) {
+      throw invalidParams("terminal/create args must be an array", { args: params.args });
+    }
+    if (params.cwd !== undefined && typeof params.cwd !== "string") {
+      throw invalidParams("terminal/create cwd must be a string", { cwd: params.cwd });
+    }
+
     const id = `term_${this.nextId++}`;
     const outputByteLimit = this.normalizeOutputByteLimit(params.outputByteLimit);
     const env = this.normalizeEnv(params.env);
@@ -139,9 +155,13 @@ export class TerminalHandler implements ClientMethodHandler {
   }
 
   private getTerminal(terminalId: string): TerminalRecord {
+    if (typeof terminalId !== "string" || terminalId.length === 0) {
+      throw invalidParams("terminalId must be a non-empty string", { terminalId });
+    }
+
     const record = this.terminals.get(terminalId);
     if (!record || record.released) {
-      throw new Error(`Terminal ${terminalId} not found`);
+      throw resourceNotFound(terminalId);
     }
     return record;
   }
@@ -167,25 +187,41 @@ export class TerminalHandler implements ClientMethodHandler {
 
     const pid = record.process.pid;
     if (process.platform === "win32" && pid) {
-      try {
-        await new Promise<void>((resolve) => {
+      const killed = await new Promise<boolean>((resolve) => {
+        try {
           const killer = spawn("taskkill", ["/T", "/F", "/PID", String(pid)], {
             stdio: "ignore",
             windowsHide: true,
           });
-          killer.once("exit", () => resolve());
-          killer.once("error", () => resolve());
-        });
+          killer.once("exit", (code) => resolve(code === 0));
+          killer.once("error", () => resolve(false));
+        } catch {
+          resolve(false);
+        }
+      });
+
+      if (killed || record.exitStatus) {
+        return;
+      }
+
+      try {
+        record.process.kill();
         return;
       } catch {
-        // Fall through to direct process kill.
+        throw internalError(`Failed to kill terminal process ${record.id}`, {
+          terminalId: record.id,
+          pid,
+        });
       }
     }
 
     try {
       record.process.kill();
-    } catch {
-      // The process may already be gone.
+    } catch (err) {
+      throw internalError(`Failed to kill terminal process ${record.id}`, {
+        terminalId: record.id,
+        reason: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -200,18 +236,33 @@ export class TerminalHandler implements ClientMethodHandler {
   }
 
   private normalizeOutputByteLimit(value: unknown): number {
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    if (value === undefined) {
       return this.defaultOutputByteLimit;
+    }
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+      throw invalidParams("outputByteLimit must be a positive finite number", {
+        outputByteLimit: value,
+      });
     }
     return Math.floor(value);
   }
 
   private normalizeEnv(value: unknown): Record<string, string> {
-    if (!Array.isArray(value)) return {};
+    if (value === undefined) return {};
+    if (!Array.isArray(value)) {
+      throw invalidParams("terminal env must be an array of name/value pairs", { env: value });
+    }
 
     return Object.fromEntries(
       value
-        .filter((item) => item && typeof item.name === "string" && typeof item.value === "string")
+        .map((item) => {
+          if (!item || typeof item.name !== "string" || typeof item.value !== "string") {
+            throw invalidParams("terminal env entries must include string name and value", {
+              entry: item,
+            });
+          }
+          return item;
+        })
         .map((item) => [item.name, item.value])
     );
   }
