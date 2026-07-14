@@ -1,11 +1,15 @@
 import { ClientMethodHandler } from "./interface.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { PermissionDeniedError } from "../core/errors.js";
 import { RequestError } from "@agentclientprotocol/sdk";
+import { WorkspaceBoundary } from "../security/workspace-boundary.js";
 
 export class FileSystemHandler implements ClientMethodHandler {
-  constructor(private readonly baseDir: string) {}
+  private readonly boundary: WorkspaceBoundary;
+
+  constructor(baseDir: string) {
+    this.boundary = new WorkspaceBoundary(baseDir);
+  }
 
   async handle(method: string, params: any): Promise<any> {
     switch (method) {
@@ -21,7 +25,7 @@ export class FileSystemHandler implements ClientMethodHandler {
   }
 
   private async listDirectory(dirPath: string) {
-    const fullPath = this.resolvePath(dirPath);
+    const fullPath = await this.boundary.resolveExisting(dirPath);
     const entries = await fs.readdir(fullPath, { withFileTypes: true });
     return {
       entries: entries.map((e) => ({
@@ -33,8 +37,8 @@ export class FileSystemHandler implements ClientMethodHandler {
   }
 
   private async readFile(filePath: string) {
-    const fullPath = this.resolvePath(filePath);
     try {
+      const fullPath = await this.boundary.resolveExisting(filePath);
       const content = await fs.readFile(fullPath, "utf-8");
       return { content };
     } catch (err: any) {
@@ -46,19 +50,9 @@ export class FileSystemHandler implements ClientMethodHandler {
   }
 
   private async writeFile(filePath: string, content: string) {
-    const fullPath = this.resolvePath(filePath);
+    const fullPath = await this.boundary.resolveWritable(filePath);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.writeFile(fullPath, content, "utf-8");
     return {};
-  }
-
-  private resolvePath(filePath: string): string {
-    const resolved = path.resolve(this.baseDir, filePath);
-    if (!resolved.startsWith(this.baseDir)) {
-      throw new PermissionDeniedError(
-        `Access denied: path ${filePath} is outside of base directory`
-      );
-    }
-    return resolved;
   }
 }
