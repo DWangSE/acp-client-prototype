@@ -38,3 +38,37 @@ test("driver contract runner maps stdin DriverPrompt to stdout DriverRunResult J
   assert.ok(Array.isArray(parsed.artifacts));
   assert.ok(Array.isArray(parsed.tool_events));
 });
+
+test("driver contract runner loads an existing session and returns response and artifact content", () => {
+  const prompt = {
+    task_id: "task-contract-session",
+    run_id: "run-contract-session",
+    session_id: "existing-session-id",
+    workspace_path: process.cwd(),
+    prompt: "Continue session and update the generated file.",
+    created_at: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+    schema_version: "v0",
+  };
+
+  const result = spawnSync("node", [join(process.cwd(), "dist/src/driver/contract-runner.js")], {
+    cwd: process.cwd(),
+    input: JSON.stringify(prompt),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ACP_AGENT_ID: "mock-driver",
+      ACP_WORKSPACE: process.cwd(),
+      AUTO_APPROVE: "1",
+      VERBOSE: "0",
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.session_id, "existing-session-id");
+  assert.match(parsed.response, /continued existing-session-id/i);
+  assert.equal(parsed.artifacts.length, 1);
+  assert.equal(parsed.artifacts[0].content.kind, "text");
+  assert.equal(parsed.artifacts[0].content.target_path, "generated/session.txt");
+  assert.match(parsed.artifacts[0].content.content_ref, /^data:text\/plain/);
+});

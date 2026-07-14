@@ -2,7 +2,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { AcpClientBuilder } from "../client/builder.js";
 import { SCHEMA_VERSION, createId, nowTimestamp, type ArtifactRef } from "../core/types.js";
 import type { ConnectionEvent, TurnController } from "../connection/interface.js";
@@ -54,6 +54,15 @@ function parseDriverPrompt(raw: string): DriverPrompt {
     }
   }
 
+  for (const field of ["session_id", "workspace_path"] as const) {
+    if (
+      parsed[field] !== undefined &&
+      (typeof parsed[field] !== "string" || parsed[field].length === 0)
+    ) {
+      throw new Error(`DriverPrompt.${field} must be a non-empty string when provided.`);
+    }
+  }
+
   if (parsed.context_pack_ref !== undefined && !isRecord(parsed.context_pack_ref)) {
     throw new Error("DriverPrompt.context_pack_ref must be an object when provided.");
   }
@@ -62,6 +71,8 @@ function parseDriverPrompt(raw: string): DriverPrompt {
     task_id: parsed.task_id as string,
     run_id: parsed.run_id as string,
     prompt: parsed.prompt as string,
+    session_id: parsed.session_id as string | undefined,
+    workspace_path: parsed.workspace_path as string | undefined,
     context_pack_ref: parsed.context_pack_ref as DriverPrompt["context_pack_ref"],
     created_at: typeof parsed.created_at === "string" ? parsed.created_at : nowTimestamp(),
     schema_version:
@@ -74,6 +85,7 @@ async function runContractPrompt(
   options: RunOptions
 ): Promise<DriverRunResult> {
   const startedAtMs = Date.now();
+  const workspace = resolve(input.workspace_path || options.workspace);
   const events: ConnectionEvent[] = [];
   let sessionId: string | undefined;
   let client: ReturnType<AcpClientBuilder["build"]> | undefined;
@@ -83,13 +95,15 @@ async function runContractPrompt(
       .withAgent(options.agentId)
       .withVerbose(false)
       .withAutoApprove(process.env.AUTO_APPROVE === "1")
-      .withSandboxDir(options.workspace)
+      .withSandboxDir(workspace)
       .build();
 
     await client.initialize();
     await client.authenticate();
 
-    const session = await client.createSession(options.workspace);
+    const session = input.session_id
+      ? await client.loadSession(input.session_id, workspace)
+      : await client.createSession(workspace);
     sessionId = session.sessionId;
 
     const turn = await client.sendPrompt(input.prompt);
@@ -105,7 +119,7 @@ async function runContractPrompt(
     return buildRunResult({
       input,
       agentId: options.agentId,
-      workspace: options.workspace,
+      workspace,
       sessionId,
       startedAtMs,
       events,
@@ -115,7 +129,7 @@ async function runContractPrompt(
     return buildRunResult({
       input,
       agentId: options.agentId,
-      workspace: options.workspace,
+      workspace,
       sessionId,
       startedAtMs,
       events,
@@ -152,7 +166,15 @@ function buildRunResult(params: ResultBuildInput): DriverRunResult {
     driver_run_result_id: createId("driver_result"),
     session_id: sessionId,
     status,
-    artifacts: collectArtifactRefs(params.events, params.agentId, taskId, createdAt, schemaVersion),
+    response: collectAgentResponse(params.events),
+    artifacts: collectArtifactRefs(
+      params.events,
+      params.agentId,
+      taskId,
+      params.workspace,
+      createdAt,
+      schemaVersion
+    ),
     transcript_ref: {
       artifact_id: createId("artifact"),
       type: "transcript",
@@ -238,6 +260,7 @@ function collectArtifactRefs(
   events: ConnectionEvent[],
   agentId: string,
   taskId: string,
+  workspace: string,
   createdAt: string,
   schemaVersion: string
 ): ArtifactRef[] {
@@ -252,8 +275,11 @@ function collectArtifactRefs(
     for (const item of content) {
       if (!isRecord(item) || item.type !== "diff") continue;
 
+      const diffPath = artifactTargetPath(workspace, stringValue(item.path));
+      const newText = stringValue(item.newText);
+      if (!diffPath || newText === undefined) continue;
+
       const artifactId = createId("artifact");
-      const diffPath = stringValue(item.path) || "unknown.diff";
       artifacts.push({
         artifact_id: artifactId,
         type: "diff",
@@ -264,6 +290,12 @@ function collectArtifactRefs(
           path: diffPath,
           tool_call_id: stringValue(updateRecord(event).toolCallId),
         },
+        content: {
+          kind: "text",
+          content_ref: `data:text/plain;charset=utf-8,${encodeURIComponent(newText)}`,
+          target_path: diffPath,
+          media_type: "text/plain",
+        },
         created_at: createdAt,
         schema_version: schemaVersion,
       });
@@ -271,6 +303,23 @@ function collectArtifactRefs(
   }
 
   return artifacts;
+}
+
+function artifactTargetPath(workspace: string, candidate: string | undefined): string | undefined {
+  if (!candidate) return undefined;
+  const absolute = resolve(workspace, candidate);
+  const target = relative(workspace, absolute);
+  if (target === "" || target === ".." || target.startsWith(`..${sep}`) || isAbsolute(target)) {
+    return undefined;
+  }
+  return target;
+}
+
+function collectAgentResponse(events: ConnectionEvent[]): string {
+  return events
+    .filter((event) => event.type === "agent_message_chunk")
+    .map((event) => textFromContent(updateRecord(event).content))
+    .join("");
 }
 
 function buildDiagnosticNotes(params: ResultBuildInput, stopReason?: string): string[] {

@@ -24,6 +24,8 @@ export interface DriverPrompt {
   task_id: TaskId;
   run_id: RunId;
   prompt: string;
+  session_id?: DriverSessionId;
+  workspace_path?: string;
   context_pack_ref?: ContextPackRef;
   created_at: Timestamp;
   schema_version: SchemaVersion;
@@ -50,6 +52,7 @@ export interface DriverRunResult {
   driver_run_result_id: string;
   session_id: DriverSessionId;
   status: DriverRunStatus;
+  response: string;
   artifacts: ArtifactRef[];
   transcript_ref: ArtifactRef;
   tool_events: DriverToolEvent[];

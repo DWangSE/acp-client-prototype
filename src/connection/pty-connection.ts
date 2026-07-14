@@ -80,6 +80,10 @@ export class PtyConnection implements AgentConnection {
     return { sessionId: "pty_session" };
   }
 
+  async loadSession(_sessionId: string, _cwd: string): Promise<SessionRecord> {
+    throw new PtyError("PTY connections do not support session/load");
+  }
+
   async sendPrompt(_sessionId: string, message: string): Promise<TurnController> {
     if (!this.ptyProcess) throw new PtyError("Not connected");
 
