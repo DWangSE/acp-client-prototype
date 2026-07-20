@@ -13,6 +13,9 @@ import type {
   DriverToolEvent,
 } from "./interface.js";
 
+const DRIVER_EVENT_PREFIX = "NEWIDE_DRIVER_EVENT ";
+const DRIVER_EVENT_SCHEMA_VERSION = "driver-event.v1";
+
 interface RunOptions {
   agentId: string;
   workspace: string;
@@ -27,6 +30,7 @@ interface ResultBuildInput {
   events: ConnectionEvent[];
   promptResult?: unknown;
   error?: unknown;
+  cancelRequested?: boolean;
 }
 
 async function readStdin(): Promise<string> {
@@ -89,6 +93,27 @@ async function runContractPrompt(
   const events: ConnectionEvent[] = [];
   let sessionId: string | undefined;
   let client: ReturnType<AcpClientBuilder["build"]> | undefined;
+  let cancelRequested = false;
+  let eventSequence = 0;
+  let onTerminate: (() => void) | undefined;
+
+  const emitDriverEvent = (eventType: string, payload: unknown): void => {
+    const envelope = {
+      schema_version: DRIVER_EVENT_SCHEMA_VERSION,
+      event_type: eventType,
+      task_id: input.task_id,
+      run_id: input.run_id,
+      ...(sessionId ? { session_id: sessionId } : {}),
+      sequence: ++eventSequence,
+      created_at: nowTimestamp(),
+      payload,
+    };
+    try {
+      process.stderr.write(`${DRIVER_EVENT_PREFIX}${JSON.stringify(envelope)}\n`);
+    } catch {
+      // The audit channel is best-effort and must not change driver behavior.
+    }
+  };
 
   try {
     client = new AcpClientBuilder()
@@ -105,16 +130,33 @@ async function runContractPrompt(
       ? await client.loadSession(input.session_id, workspace)
       : await client.createSession(workspace);
     sessionId = session.sessionId;
+    emitDriverEvent("driver.turn_started", { prompt_length: input.prompt.length });
 
     const turn = await client.sendPrompt(input.prompt);
-    const collectEvents = collectTurnEvents(turn, events).catch((eventError) => {
+    onTerminate = (): void => {
+      cancelRequested = true;
+      emitDriverEvent("driver.turn_cancel_requested", { reason: "process_signal" });
+      void turn.cancel().catch((cancelError) => {
+        emitDriverEvent("driver.turn_cancel_failed", { error: errorMessage(cancelError) });
+      });
+    };
+    process.once("SIGTERM", onTerminate);
+    process.once("SIGINT", onTerminate);
+
+    const collectEvents = collectTurnEvents(turn, events, (event) => {
+      emitDriverEvent(event.type, event.payload);
+    }).catch((eventError) => {
       events.push({
         type: "stderr",
         payload: `event collection failed: ${errorMessage(eventError)}`,
       });
+      emitDriverEvent("driver.event_collection_failed", { error: errorMessage(eventError) });
     });
     const promptResult = await turn.result;
     await collectEvents;
+    emitDriverEvent("driver.turn_completed", {
+      stop_reason: stopReasonFrom(promptResult) || null,
+    });
 
     return buildRunResult({
       input,
@@ -124,8 +166,10 @@ async function runContractPrompt(
       startedAtMs,
       events,
       promptResult,
+      cancelRequested,
     });
   } catch (error) {
+    emitDriverEvent("driver.turn_failed", { error: errorMessage(error) });
     return buildRunResult({
       input,
       agentId: options.agentId,
@@ -134,8 +178,13 @@ async function runContractPrompt(
       startedAtMs,
       events,
       error,
+      cancelRequested,
     });
   } finally {
+    if (onTerminate) {
+      process.removeListener("SIGTERM", onTerminate);
+      process.removeListener("SIGINT", onTerminate);
+    }
     if (client) {
       try {
         await client.shutdown();
@@ -146,9 +195,14 @@ async function runContractPrompt(
   }
 }
 
-async function collectTurnEvents(turn: TurnController, events: ConnectionEvent[]): Promise<void> {
+async function collectTurnEvents(
+  turn: TurnController,
+  events: ConnectionEvent[],
+  onEvent?: (event: ConnectionEvent) => void
+): Promise<void> {
   for await (const event of turn) {
     events.push(event);
+    onEvent?.(event);
   }
 }
 
@@ -158,7 +212,7 @@ function buildRunResult(params: ResultBuildInput): DriverRunResult {
   const taskId = params.input?.task_id || "unknown-task";
   const sessionId = params.sessionId || "session-unavailable";
   const stopReason = stopReasonFrom(params.promptResult);
-  const status = mapRunStatus(stopReason, params.error);
+  const status = mapRunStatus(stopReason, params.error, params.cancelRequested);
   const error = buildDriverError(status, stopReason, params.error);
   const transcriptStats = summarizeTranscript(params.events);
 
@@ -365,7 +419,12 @@ function stopReasonFrom(promptResult: unknown): string | undefined {
   return stringValue(promptResult.stopReason);
 }
 
-function mapRunStatus(stopReason: string | undefined, error: unknown): DriverRunStatus {
+function mapRunStatus(
+  stopReason: string | undefined,
+  error: unknown,
+  cancelRequested = false
+): DriverRunStatus {
+  if (cancelRequested) return "cancelled";
   if (error) return "failed";
   const normalized = (stopReason || "done").toLowerCase();
   if (normalized.includes("cancel")) return "cancelled";
@@ -379,6 +438,7 @@ function buildDriverError(
   stopReason: string | undefined,
   error: unknown
 ): DriverRunResult["error"] {
+  if (status === "cancelled" || status === "interrupted") return undefined;
   if (error) {
     return {
       code: "DRIVER_RUNNER_ERROR",
