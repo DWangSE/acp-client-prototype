@@ -277,7 +277,11 @@ export class AcpClient extends EventEmitter {
     return this.currentSession;
   }
 
-  async loadSession(sessionId: string, cwd: string): Promise<SessionInfo> {
+  async loadSession(
+    sessionId: string,
+    cwd: string,
+    mcpServers: McpServerConfig[] = []
+  ): Promise<SessionInfo> {
     this.ensureInitialized();
     if (!this.authenticated) await this.authenticate();
 
@@ -288,7 +292,11 @@ export class AcpClient extends EventEmitter {
       data: { sessionId, cwd },
     });
 
-    const sessionRecord = await this.connection.loadSession(sessionId, cwd);
+    const extensionMcpServers = await this.getExtensionMcpServers();
+    const sessionRecord = await this.connection.loadSession(sessionId, cwd, [
+      ...mcpServers,
+      ...extensionMcpServers,
+    ]);
     this.currentSession = {
       sessionId: sessionRecord.sessionId,
       cwd,

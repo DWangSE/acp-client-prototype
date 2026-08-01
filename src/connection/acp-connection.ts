@@ -178,9 +178,13 @@ export class AcpConnection implements AgentConnection {
     return { sessionId: resp.sessionId };
   }
 
-  async loadSession(sessionId: string, cwd: string): Promise<SessionRecord> {
+  async loadSession(
+    sessionId: string,
+    cwd: string,
+    mcpServers: McpServerConfig[] = []
+  ): Promise<SessionRecord> {
     if (!this.sdkConn) throw new TransportError("Not connected");
-    await this.sdkConn.loadSession({ sessionId, cwd, mcpServers: [] });
+    await this.sdkConn.loadSession({ sessionId, cwd, mcpServers });
     return { sessionId };
   }
 
