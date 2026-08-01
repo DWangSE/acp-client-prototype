@@ -68,7 +68,11 @@ export interface AgentConnection {
   }): Promise<InitializeResult>;
   authenticate(methodId: string, authMethod: any): Promise<void>;
   createSession(cwd: string, mcpServers?: McpServerConfig[]): Promise<SessionRecord>;
-  loadSession(sessionId: string, cwd: string): Promise<SessionRecord>;
+  loadSession(
+    sessionId: string,
+    cwd: string,
+    mcpServers?: McpServerConfig[]
+  ): Promise<SessionRecord>;
   sendPrompt(sessionId: string, message: string): Promise<TurnController>;
   cancel(sessionId: string): Promise<void>;
 

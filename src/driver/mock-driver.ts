@@ -424,6 +424,13 @@ export function runAcpMockServer() {
       },
       loadSession: async (params: any) => {
         loadedSessionId = params.sessionId;
+        const sessionId = params.sessionId;
+        if (!sessions.has(sessionId)) {
+          sessions.set(sessionId, {
+            sessionId,
+            mcpServers: params.mcpServers || [],
+          });
+        }
         return {};
       },
       prompt: async (params: any) => {

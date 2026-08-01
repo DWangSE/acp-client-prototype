@@ -3,6 +3,7 @@ import type {
   ContextPackRef,
   DriverId,
   DriverSessionId,
+  McpServerConfig,
   RunId,
   SchemaVersion,
   TaskId,
@@ -26,6 +27,8 @@ export interface DriverPrompt {
   prompt: string;
   session_id?: DriverSessionId;
   workspace_path?: string;
+  /** MCP servers the agent should connect to for this session. */
+  mcp_servers?: McpServerConfig[];
   context_pack_ref?: ContextPackRef;
   created_at: Timestamp;
   schema_version: SchemaVersion;

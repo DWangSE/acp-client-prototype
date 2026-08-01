@@ -4,7 +4,13 @@ dotenv.config();
 
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { AcpClientBuilder } from "../client/builder.js";
-import { SCHEMA_VERSION, createId, nowTimestamp, type ArtifactRef } from "../core/types.js";
+import {
+  SCHEMA_VERSION,
+  createId,
+  nowTimestamp,
+  type ArtifactRef,
+  type McpServerConfig,
+} from "../core/types.js";
 import type { ConnectionEvent, TurnController } from "../connection/interface.js";
 import type {
   DriverPrompt,
@@ -71,12 +77,19 @@ function parseDriverPrompt(raw: string): DriverPrompt {
     throw new Error("DriverPrompt.context_pack_ref must be an object when provided.");
   }
 
+  if (parsed.mcp_servers !== undefined && !Array.isArray(parsed.mcp_servers)) {
+    throw new Error("DriverPrompt.mcp_servers must be an array when provided.");
+  }
+
   return {
     task_id: parsed.task_id as string,
     run_id: parsed.run_id as string,
     prompt: parsed.prompt as string,
     session_id: parsed.session_id as string | undefined,
     workspace_path: parsed.workspace_path as string | undefined,
+    mcp_servers: Array.isArray(parsed.mcp_servers)
+      ? (parsed.mcp_servers as McpServerConfig[])
+      : undefined,
     context_pack_ref: parsed.context_pack_ref as DriverPrompt["context_pack_ref"],
     created_at: typeof parsed.created_at === "string" ? parsed.created_at : nowTimestamp(),
     schema_version:
@@ -126,9 +139,11 @@ async function runContractPrompt(
     await client.initialize();
     await client.authenticate();
 
+    const mcpServers = input.mcp_servers ?? [];
+
     const session = input.session_id
-      ? await client.loadSession(input.session_id, workspace)
-      : await client.createSession(workspace);
+      ? await client.loadSession(input.session_id, workspace, mcpServers)
+      : await client.createSession(workspace, mcpServers);
     sessionId = session.sessionId;
     emitDriverEvent("driver.turn_started", { prompt_length: input.prompt.length });
 
