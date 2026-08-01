@@ -16,7 +16,9 @@ before(async () => {
   sibling = path.join(root, "project-secrets");
   await fs.mkdir(workspace);
   await fs.mkdir(sibling);
-  await fs.symlink(sibling, path.join(workspace, "escape-link"));
+  // Use junction on Windows to avoid elevation requirement
+  const symlinkType = process.platform === "win32" ? "junction" : "dir";
+  await fs.symlink(sibling, path.join(workspace, "escape-link"), symlinkType);
 });
 
 after(async () => {
@@ -43,7 +45,7 @@ test("filesystem rejects sibling-prefix and symlink workspace escapes", async ()
 });
 
 test("terminal rejects cwd outside workspace", async () => {
-  const handler = new TerminalHandler(workspace);
+  const handler = new TerminalHandler({ workspace });
 
   await assert.rejects(
     handler.handle("terminal/create", { command: "pwd", cwd: sibling }),

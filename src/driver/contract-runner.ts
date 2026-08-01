@@ -132,16 +132,39 @@ async function runContractPrompt(
     sessionId = session.sessionId;
     emitDriverEvent("driver.turn_started", { prompt_length: input.prompt.length });
 
+    // ── Signal handling: capture signals that arrive during sendPrompt ──
+    let pendingCancel = false;
+    const earlySignalHandler = () => {
+      pendingCancel = true;
+    };
+    process.once("SIGTERM", earlySignalHandler);
+    process.once("SIGINT", earlySignalHandler);
+
     const turn = await client.sendPrompt(input.prompt);
-    onTerminate = (): void => {
+
+    // Clean up early handlers (no-op if already fired via once)
+    process.removeListener("SIGTERM", earlySignalHandler);
+    process.removeListener("SIGINT", earlySignalHandler);
+
+    if (pendingCancel) {
+      // Signal arrived during sendPrompt — cancel immediately
       cancelRequested = true;
       emitDriverEvent("driver.turn_cancel_requested", { reason: "process_signal" });
       void turn.cancel().catch((cancelError) => {
         emitDriverEvent("driver.turn_cancel_failed", { error: errorMessage(cancelError) });
       });
-    };
-    process.once("SIGTERM", onTerminate);
-    process.once("SIGINT", onTerminate);
+    } else {
+      // Register handlers for signals during turn execution
+      onTerminate = (): void => {
+        cancelRequested = true;
+        emitDriverEvent("driver.turn_cancel_requested", { reason: "process_signal" });
+        void turn.cancel().catch((cancelError) => {
+          emitDriverEvent("driver.turn_cancel_failed", { error: errorMessage(cancelError) });
+        });
+      };
+      process.once("SIGTERM", onTerminate);
+      process.once("SIGINT", onTerminate);
+    }
 
     const collectEvents = collectTurnEvents(turn, events, (event) => {
       emitDriverEvent(event.type, event.payload);

@@ -1,6 +1,7 @@
 import { AgentAdapter } from "./interface.js";
 import { ConnectionType } from "../connection/interface.js";
 import { AuthStrategyType } from "../auth/interface.js";
+import type { PtyOutputParser } from "../connection/pty-parser.js";
 
 export abstract class BaseAdapter implements AgentAdapter {
   constructor(
@@ -43,7 +44,7 @@ export abstract class BaseAdapter implements AgentAdapter {
     return raw;
   }
 
-  parsePtyOutput?(_chunk: string): any[] {
-    return [];
+  createPtyParser?(): PtyOutputParser | undefined {
+    return undefined;
   }
 }

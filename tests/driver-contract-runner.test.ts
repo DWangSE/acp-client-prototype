@@ -38,7 +38,6 @@ test("driver contract runner maps stdin DriverPrompt to stdout DriverRunResult J
   assert.ok(Array.isArray(parsed.artifacts));
   assert.ok(Array.isArray(parsed.tool_events));
 });
-
 test("driver contract runner loads an existing session and returns response and artifact content", () => {
   const prompt = {
     task_id: "task-contract-session",
@@ -69,7 +68,7 @@ test("driver contract runner loads an existing session and returns response and 
   assert.match(parsed.response, /continued existing-session-id/i);
   assert.equal(parsed.artifacts.length, 1);
   assert.equal(parsed.artifacts[0].content.kind, "text");
-  assert.equal(parsed.artifacts[0].content.target_path, "generated/session.txt");
+  assert.equal(parsed.artifacts[0].content.target_path, join("generated", "session.txt"));
   assert.match(parsed.artifacts[0].content.content_ref, /^data:text\/plain/);
 });
 

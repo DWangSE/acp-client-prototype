@@ -1,4 +1,9 @@
-import type { ClientCapabilities, AuthMethod, AgentCapabilities } from "../core/types.js";
+import type {
+  ClientCapabilities,
+  AuthMethod,
+  AgentCapabilities,
+  McpServerConfig,
+} from "../core/types.js";
 
 export type ConnectionType = "acp" | "pty";
 
@@ -62,7 +67,7 @@ export interface AgentConnection {
     clientInfo?: { name: string; version: string };
   }): Promise<InitializeResult>;
   authenticate(methodId: string, authMethod: any): Promise<void>;
-  createSession(cwd: string): Promise<SessionRecord>;
+  createSession(cwd: string, mcpServers?: McpServerConfig[]): Promise<SessionRecord>;
   loadSession(sessionId: string, cwd: string): Promise<SessionRecord>;
   sendPrompt(sessionId: string, message: string): Promise<TurnController>;
   cancel(sessionId: string): Promise<void>;
@@ -72,5 +77,5 @@ export interface AgentConnection {
   /**
    * Global event stream for the connection (e.g. out-of-band notifications)
    */
-  onEvent(): AsyncIterable<ConnectionEvent>;
+  onEvent(signal?: AbortSignal): AsyncIterable<ConnectionEvent>;
 }

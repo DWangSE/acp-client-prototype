@@ -121,12 +121,29 @@ export interface PromptResponse {
   stopReason: "end_turn" | "max_tokens" | "tool_use" | "cancelled" | "error" | string;
 }
 
-export interface McpServerConfig {
+export interface McpHttpHeader {
   name: string;
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
+  value: string;
 }
+
+export interface McpEnvVariable {
+  name: string;
+  value: string;
+}
+
+export type McpServerConfig =
+  | {
+      name: string;
+      command: string;
+      args?: string[];
+      env?: Record<string, string> | McpEnvVariable[];
+    }
+  | {
+      name: string;
+      type: "http" | "sse";
+      url: string;
+      headers: McpHttpHeader[];
+    };
 
 // ── Content Blocks ──
 
