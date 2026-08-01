@@ -1,7 +1,42 @@
 import { ClientMethodHandler } from "./interface.js";
 import spawn from "cross-spawn";
 import type { ChildProcess } from "node:child_process";
+import { WorkspaceBoundary } from "../security/workspace-boundary.js";
 import { internalError, invalidParams, methodNotFound, resourceNotFound } from "./error-utils.js";
+
+// ── Terminal env isolation (whitelist-only, no API keys) ──
+
+const TERMINAL_ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TERM",
+  "COLORTERM",
+  "USER",
+  "LOGNAME",
+  "CI",
+  "NO_COLOR",
+  "FORCE_COLOR",
+] as const;
+
+export function createTerminalEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of TERMINAL_ENV_KEYS) {
+    if (source[key] !== undefined) result[key] = source[key];
+  }
+  for (const [key, value] of Object.entries(source)) {
+    if (key.startsWith("LC_") && value !== undefined) result[key] = value;
+  }
+  return result;
+}
+
+// ── Internal types ──
 
 interface TerminalExitStatus {
   exitCode?: number | null;
@@ -23,23 +58,29 @@ interface TerminalRecord {
 
 export interface TerminalHandlerOptions {
   defaultOutputByteLimit?: number;
+  /** Workspace root directory for path boundary enforcement. Defaults to process.cwd(). */
+  workspace?: string;
 }
 
 const DEFAULT_OUTPUT_BYTE_LIMIT = 1024 * 1024;
 
+// ── Handler ──
+
 export class TerminalHandler implements ClientMethodHandler {
   private terminals = new Map<string, TerminalRecord>();
   private nextId = 1;
+  private readonly boundary: WorkspaceBoundary;
   private defaultOutputByteLimit: number;
 
   constructor(options: TerminalHandlerOptions = {}) {
+    this.boundary = new WorkspaceBoundary(options.workspace ?? process.cwd());
     this.defaultOutputByteLimit = options.defaultOutputByteLimit ?? DEFAULT_OUTPUT_BYTE_LIMIT;
   }
 
   async handle(method: string, params: any): Promise<any> {
     switch (method) {
       case "terminal/create":
-        return this.create(params);
+        return await this.create(params);
       case "terminal/output":
         return this.output(params);
       case "terminal/wait_for_exit":
@@ -53,7 +94,7 @@ export class TerminalHandler implements ClientMethodHandler {
     }
   }
 
-  private create(params: any): { terminalId: string } {
+  private async create(params: any): Promise<{ terminalId: string }> {
     if (!params || typeof params !== "object" || Array.isArray(params)) {
       throw invalidParams("terminal/create requires object params", { params });
     }
@@ -71,7 +112,11 @@ export class TerminalHandler implements ClientMethodHandler {
 
     const id = `term_${this.nextId++}`;
     const outputByteLimit = this.normalizeOutputByteLimit(params.outputByteLimit);
-    const env = this.normalizeEnv(params.env);
+    const userEnv = this.normalizeEnv(params.env);
+
+    // Resolve and validate cwd against workspace boundary
+    const requestedCwd = params.cwd ?? ".";
+    const cwd = await this.boundary.resolveExisting(requestedCwd);
 
     let resolveExit!: (status: TerminalExitStatus) => void;
     const exitPromise = new Promise<TerminalExitStatus>((resolve) => {
@@ -81,8 +126,8 @@ export class TerminalHandler implements ClientMethodHandler {
     const args = params.args ?? [];
     const proc = spawn(params.command, args, {
       shell: args.length === 0 && this.shouldUseShell(params.command),
-      cwd: params.cwd || process.cwd(),
-      env: { ...process.env, ...env },
+      cwd,
+      env: { ...createTerminalEnv(process.env), PWD: cwd, ...userEnv },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });

@@ -138,7 +138,10 @@ export class AcpClientBuilder {
       this.permissionHandler ??
         new PermissionHandler(this.autoApprove || process.env.AUTO_APPROVE === "1")
     );
-    methodRouter.register("terminal", this.terminalHandler ?? new TerminalHandler());
+    methodRouter.register(
+      "terminal",
+      this.terminalHandler ?? new TerminalHandler({ workspace: this.sandboxDir })
+    );
 
     // Register user defined handlers
     for (const [method, handler] of Object.entries(this.handlers)) {

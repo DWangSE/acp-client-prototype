@@ -4,7 +4,6 @@ about: 为项目报告/修复bug
 title: "[BUG]"
 labels: bug
 assignees: DWangSE
-
 ---
 
 ## {{Bug标题}}

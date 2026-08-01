@@ -2,7 +2,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { AcpClientBuilder } from "../client/builder.js";
 import { SCHEMA_VERSION, createId, nowTimestamp, type ArtifactRef } from "../core/types.js";
 import type { ConnectionEvent, TurnController } from "../connection/interface.js";
@@ -12,6 +12,9 @@ import type {
   DriverRunStatus,
   DriverToolEvent,
 } from "./interface.js";
+
+const DRIVER_EVENT_PREFIX = "NEWIDE_DRIVER_EVENT ";
+const DRIVER_EVENT_SCHEMA_VERSION = "driver-event.v1";
 
 interface RunOptions {
   agentId: string;
@@ -27,6 +30,7 @@ interface ResultBuildInput {
   events: ConnectionEvent[];
   promptResult?: unknown;
   error?: unknown;
+  cancelRequested?: boolean;
 }
 
 async function readStdin(): Promise<string> {
@@ -54,6 +58,15 @@ function parseDriverPrompt(raw: string): DriverPrompt {
     }
   }
 
+  for (const field of ["session_id", "workspace_path"] as const) {
+    if (
+      parsed[field] !== undefined &&
+      (typeof parsed[field] !== "string" || parsed[field].length === 0)
+    ) {
+      throw new Error(`DriverPrompt.${field} must be a non-empty string when provided.`);
+    }
+  }
+
   if (parsed.context_pack_ref !== undefined && !isRecord(parsed.context_pack_ref)) {
     throw new Error("DriverPrompt.context_pack_ref must be an object when provided.");
   }
@@ -62,6 +75,8 @@ function parseDriverPrompt(raw: string): DriverPrompt {
     task_id: parsed.task_id as string,
     run_id: parsed.run_id as string,
     prompt: parsed.prompt as string,
+    session_id: parsed.session_id as string | undefined,
+    workspace_path: parsed.workspace_path as string | undefined,
     context_pack_ref: parsed.context_pack_ref as DriverPrompt["context_pack_ref"],
     created_at: typeof parsed.created_at === "string" ? parsed.created_at : nowTimestamp(),
     schema_version:
@@ -74,54 +89,125 @@ async function runContractPrompt(
   options: RunOptions
 ): Promise<DriverRunResult> {
   const startedAtMs = Date.now();
+  const workspace = resolve(input.workspace_path || options.workspace);
   const events: ConnectionEvent[] = [];
   let sessionId: string | undefined;
   let client: ReturnType<AcpClientBuilder["build"]> | undefined;
+  let cancelRequested = false;
+  let eventSequence = 0;
+  let onTerminate: (() => void) | undefined;
+
+  const emitDriverEvent = (eventType: string, payload: unknown): void => {
+    const envelope = {
+      schema_version: DRIVER_EVENT_SCHEMA_VERSION,
+      event_type: eventType,
+      task_id: input.task_id,
+      run_id: input.run_id,
+      ...(sessionId ? { session_id: sessionId } : {}),
+      sequence: ++eventSequence,
+      created_at: nowTimestamp(),
+      payload,
+    };
+    try {
+      process.stderr.write(`${DRIVER_EVENT_PREFIX}${JSON.stringify(envelope)}\n`);
+    } catch {
+      // The audit channel is best-effort and must not change driver behavior.
+    }
+  };
 
   try {
     client = new AcpClientBuilder()
       .withAgent(options.agentId)
       .withVerbose(false)
       .withAutoApprove(process.env.AUTO_APPROVE === "1")
-      .withSandboxDir(options.workspace)
+      .withSandboxDir(workspace)
       .build();
 
     await client.initialize();
     await client.authenticate();
 
-    const session = await client.createSession(options.workspace);
+    const session = input.session_id
+      ? await client.loadSession(input.session_id, workspace)
+      : await client.createSession(workspace);
     sessionId = session.sessionId;
+    emitDriverEvent("driver.turn_started", { prompt_length: input.prompt.length });
+
+    // ── Signal handling: capture signals that arrive during sendPrompt ──
+    let pendingCancel = false;
+    const earlySignalHandler = () => {
+      pendingCancel = true;
+    };
+    process.once("SIGTERM", earlySignalHandler);
+    process.once("SIGINT", earlySignalHandler);
 
     const turn = await client.sendPrompt(input.prompt);
-    const collectEvents = collectTurnEvents(turn, events).catch((eventError) => {
+
+    // Clean up early handlers (no-op if already fired via once)
+    process.removeListener("SIGTERM", earlySignalHandler);
+    process.removeListener("SIGINT", earlySignalHandler);
+
+    if (pendingCancel) {
+      // Signal arrived during sendPrompt — cancel immediately
+      cancelRequested = true;
+      emitDriverEvent("driver.turn_cancel_requested", { reason: "process_signal" });
+      void turn.cancel().catch((cancelError) => {
+        emitDriverEvent("driver.turn_cancel_failed", { error: errorMessage(cancelError) });
+      });
+    } else {
+      // Register handlers for signals during turn execution
+      onTerminate = (): void => {
+        cancelRequested = true;
+        emitDriverEvent("driver.turn_cancel_requested", { reason: "process_signal" });
+        void turn.cancel().catch((cancelError) => {
+          emitDriverEvent("driver.turn_cancel_failed", { error: errorMessage(cancelError) });
+        });
+      };
+      process.once("SIGTERM", onTerminate);
+      process.once("SIGINT", onTerminate);
+    }
+
+    const collectEvents = collectTurnEvents(turn, events, (event) => {
+      emitDriverEvent(event.type, event.payload);
+    }).catch((eventError) => {
       events.push({
         type: "stderr",
         payload: `event collection failed: ${errorMessage(eventError)}`,
       });
+      emitDriverEvent("driver.event_collection_failed", { error: errorMessage(eventError) });
     });
     const promptResult = await turn.result;
     await collectEvents;
+    emitDriverEvent("driver.turn_completed", {
+      stop_reason: stopReasonFrom(promptResult) || null,
+    });
 
     return buildRunResult({
       input,
       agentId: options.agentId,
-      workspace: options.workspace,
+      workspace,
       sessionId,
       startedAtMs,
       events,
       promptResult,
+      cancelRequested,
     });
   } catch (error) {
+    emitDriverEvent("driver.turn_failed", { error: errorMessage(error) });
     return buildRunResult({
       input,
       agentId: options.agentId,
-      workspace: options.workspace,
+      workspace,
       sessionId,
       startedAtMs,
       events,
       error,
+      cancelRequested,
     });
   } finally {
+    if (onTerminate) {
+      process.removeListener("SIGTERM", onTerminate);
+      process.removeListener("SIGINT", onTerminate);
+    }
     if (client) {
       try {
         await client.shutdown();
@@ -132,9 +218,14 @@ async function runContractPrompt(
   }
 }
 
-async function collectTurnEvents(turn: TurnController, events: ConnectionEvent[]): Promise<void> {
+async function collectTurnEvents(
+  turn: TurnController,
+  events: ConnectionEvent[],
+  onEvent?: (event: ConnectionEvent) => void
+): Promise<void> {
   for await (const event of turn) {
     events.push(event);
+    onEvent?.(event);
   }
 }
 
@@ -144,7 +235,7 @@ function buildRunResult(params: ResultBuildInput): DriverRunResult {
   const taskId = params.input?.task_id || "unknown-task";
   const sessionId = params.sessionId || "session-unavailable";
   const stopReason = stopReasonFrom(params.promptResult);
-  const status = mapRunStatus(stopReason, params.error);
+  const status = mapRunStatus(stopReason, params.error, params.cancelRequested);
   const error = buildDriverError(status, stopReason, params.error);
   const transcriptStats = summarizeTranscript(params.events);
 
@@ -152,7 +243,15 @@ function buildRunResult(params: ResultBuildInput): DriverRunResult {
     driver_run_result_id: createId("driver_result"),
     session_id: sessionId,
     status,
-    artifacts: collectArtifactRefs(params.events, params.agentId, taskId, createdAt, schemaVersion),
+    response: collectAgentResponse(params.events),
+    artifacts: collectArtifactRefs(
+      params.events,
+      params.agentId,
+      taskId,
+      params.workspace,
+      createdAt,
+      schemaVersion
+    ),
     transcript_ref: {
       artifact_id: createId("artifact"),
       type: "transcript",
@@ -238,6 +337,7 @@ function collectArtifactRefs(
   events: ConnectionEvent[],
   agentId: string,
   taskId: string,
+  workspace: string,
   createdAt: string,
   schemaVersion: string
 ): ArtifactRef[] {
@@ -252,8 +352,11 @@ function collectArtifactRefs(
     for (const item of content) {
       if (!isRecord(item) || item.type !== "diff") continue;
 
+      const diffPath = artifactTargetPath(workspace, stringValue(item.path));
+      const newText = stringValue(item.newText);
+      if (!diffPath || newText === undefined) continue;
+
       const artifactId = createId("artifact");
-      const diffPath = stringValue(item.path) || "unknown.diff";
       artifacts.push({
         artifact_id: artifactId,
         type: "diff",
@@ -264,6 +367,12 @@ function collectArtifactRefs(
           path: diffPath,
           tool_call_id: stringValue(updateRecord(event).toolCallId),
         },
+        content: {
+          kind: "text",
+          content_ref: `data:text/plain;charset=utf-8,${encodeURIComponent(newText)}`,
+          target_path: diffPath,
+          media_type: "text/plain",
+        },
         created_at: createdAt,
         schema_version: schemaVersion,
       });
@@ -271,6 +380,23 @@ function collectArtifactRefs(
   }
 
   return artifacts;
+}
+
+function artifactTargetPath(workspace: string, candidate: string | undefined): string | undefined {
+  if (!candidate) return undefined;
+  const absolute = resolve(workspace, candidate);
+  const target = relative(workspace, absolute);
+  if (target === "" || target === ".." || target.startsWith(`..${sep}`) || isAbsolute(target)) {
+    return undefined;
+  }
+  return target;
+}
+
+function collectAgentResponse(events: ConnectionEvent[]): string {
+  return events
+    .filter((event) => event.type === "agent_message_chunk")
+    .map((event) => textFromContent(updateRecord(event).content))
+    .join("");
 }
 
 function buildDiagnosticNotes(params: ResultBuildInput, stopReason?: string): string[] {
@@ -316,7 +442,12 @@ function stopReasonFrom(promptResult: unknown): string | undefined {
   return stringValue(promptResult.stopReason);
 }
 
-function mapRunStatus(stopReason: string | undefined, error: unknown): DriverRunStatus {
+function mapRunStatus(
+  stopReason: string | undefined,
+  error: unknown,
+  cancelRequested = false
+): DriverRunStatus {
+  if (cancelRequested) return "cancelled";
   if (error) return "failed";
   const normalized = (stopReason || "done").toLowerCase();
   if (normalized.includes("cancel")) return "cancelled";
@@ -330,6 +461,7 @@ function buildDriverError(
   stopReason: string | undefined,
   error: unknown
 ): DriverRunResult["error"] {
+  if (status === "cancelled" || status === "interrupted") return undefined;
   if (error) {
     return {
       code: "DRIVER_RUNNER_ERROR",

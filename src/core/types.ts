@@ -367,6 +367,13 @@ export type ArtifactType =
   | "audit"
   | "merge_authorization";
 
+export interface ArtifactContent {
+  kind: "text" | "file" | "patch" | "metadata";
+  content_ref: string;
+  target_path?: string;
+  media_type?: string;
+}
+
 export interface ArtifactRef {
   artifact_id: string;
   type: ArtifactType;
@@ -375,6 +382,7 @@ export interface ArtifactRef {
   producer_id: string;
   task_id?: string;
   metadata?: Record<string, unknown>;
+  content?: ArtifactContent;
   created_at: string;
   schema_version: string;
 }

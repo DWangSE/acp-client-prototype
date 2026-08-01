@@ -8,6 +8,8 @@ export type HookPoint =
   | "post:authenticate"
   | "pre:session:create"
   | "post:session:create"
+  | "pre:session:load"
+  | "post:session:load"
   | "pre:prompt"
   | "post:prompt"
   | "pre:disconnect"

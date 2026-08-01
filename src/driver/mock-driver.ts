@@ -76,6 +76,12 @@ export class MockDriver implements DriverRuntimeHandle {
         prompt_length: input.prompt.length,
         context_pack_id: input.context_pack_ref?.context_pack_id,
       },
+      content: {
+        kind: "text",
+        content_ref: `data:text/plain,${encodeURIComponent(`MockDriver completed task ${input.task_id}\n`)}`,
+        target_path: "generated/mock-driver-output.txt",
+        media_type: "text/plain",
+      },
       created_at,
       schema_version: SCHEMA_VERSION,
     };
@@ -86,6 +92,7 @@ export class MockDriver implements DriverRuntimeHandle {
       driver_run_result_id: createId("driver_result"),
       session_id: this.session_id,
       status,
+      response: isSuccess ? `MockDriver completed task ${input.task_id}.` : "MockDriver failed.",
       artifacts: [patchArtifact],
       transcript_ref: transcript,
       tool_events: [
@@ -373,6 +380,8 @@ export function runAcpMockServer() {
   const readable = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
   const stream = ndJsonStream(writable, readable);
 
+  let loadedSessionId: string | undefined;
+
   new AgentSideConnection((conn) => {
     const sessions = new Map<string, MockSession>();
 
@@ -381,6 +390,7 @@ export function runAcpMockServer() {
         return {
           protocolVersion: 1,
           agentCapabilities: {
+            loadSession: true,
             supports_acp_extension: false,
             supports_structured_output: true,
             supports_session_load: false,
@@ -402,15 +412,19 @@ export function runAcpMockServer() {
         return {};
       },
       newSession: async (params: any) => {
+        loadedSessionId = undefined;
         const sessionId = "mock-session-id";
         sessions.set(sessionId, {
           sessionId,
           mcpServers: params.mcpServers || [],
         });
-
         return {
           sessionId,
         };
+      },
+      loadSession: async (params: any) => {
+        loadedSessionId = params.sessionId;
+        return {};
       },
       prompt: async (params: any) => {
         const promptText = params.prompt[0]?.text || "";
@@ -493,6 +507,43 @@ export function runAcpMockServer() {
             return {
               stopReason: "done",
             };
+          } else if (promptText.toLowerCase().includes("continue session")) {
+            await conn.sessionUpdate({
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                content: {
+                  type: "text",
+                  text: `Continued ${loadedSessionId || "no loaded session"}.`,
+                },
+              },
+            });
+            await conn.sessionUpdate({
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "tool_call",
+                toolCallId: "mock-session-write",
+                title: "Update generated session file",
+                kind: "edit",
+                status: "in_progress",
+              },
+            });
+            await conn.sessionUpdate({
+              sessionId: params.sessionId,
+              update: {
+                sessionUpdate: "tool_call_update",
+                toolCallId: "mock-session-write",
+                status: "completed",
+                content: [
+                  {
+                    type: "diff",
+                    path: "generated/session.txt",
+                    oldText: "",
+                    newText: `continued=${loadedSessionId || "none"}\n`,
+                  },
+                ],
+              },
+            });
           } else if (promptText.toLowerCase().includes("write")) {
             const filePath = ".temp/test-write.txt";
             const content = "Filesystem write verification token: XYZ123";
@@ -540,6 +591,19 @@ export function runAcpMockServer() {
                   ? `TERMINAL_TEST_FAIL ${err.message || String(err)}`
                   : `ERROR:${err.message || String(err)}`,
               },
+            },
+          });
+        }
+
+        if (
+          !promptText.toLowerCase().includes("read") &&
+          !promptText.toLowerCase().includes("continue session")
+        ) {
+          await conn.sessionUpdate({
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "Mock driver completed the prompt." },
             },
           });
         }

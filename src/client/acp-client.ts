@@ -277,6 +277,33 @@ export class AcpClient extends EventEmitter {
     return this.currentSession;
   }
 
+  async loadSession(sessionId: string, cwd: string): Promise<SessionInfo> {
+    this.ensureInitialized();
+    if (!this.authenticated) await this.authenticate();
+
+    const agentId = this.adapter.agentId;
+    this.emit("pre:session:load", {
+      point: "pre:session:load",
+      agentId,
+      data: { sessionId, cwd },
+    });
+
+    const sessionRecord = await this.connection.loadSession(sessionId, cwd);
+    this.currentSession = {
+      sessionId: sessionRecord.sessionId,
+      cwd,
+      agentId,
+    };
+
+    this.emit("post:session:load", {
+      point: "post:session:load",
+      agentId,
+      data: this.currentSession,
+    });
+    this.setState("ready");
+    return this.currentSession;
+  }
+
   async sendPrompt(message: string): Promise<TurnController> {
     this.ensureInitialized();
     if (!this.currentSession) throw new SessionError("No active session");

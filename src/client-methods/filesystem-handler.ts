@@ -8,12 +8,14 @@ import {
   permissionDenied,
   requireStringParam,
 } from "./error-utils.js";
+import { WorkspaceBoundary } from "../security/workspace-boundary.js";
+import { PermissionDeniedError } from "../core/errors.js";
 
 export class FileSystemHandler implements ClientMethodHandler {
-  private readonly baseDir: string;
+  private readonly boundary: WorkspaceBoundary;
 
   constructor(baseDir: string) {
-    this.baseDir = path.resolve(baseDir);
+    this.boundary = new WorkspaceBoundary(baseDir);
   }
 
   async handle(method: string, params: any): Promise<any> {
@@ -35,8 +37,8 @@ export class FileSystemHandler implements ClientMethodHandler {
   }
 
   private async listDirectory(dirPath: string) {
-    const fullPath = this.resolvePath(dirPath);
     try {
+      const fullPath = await this.boundary.resolveExisting(dirPath);
       const entries = await fs.readdir(fullPath, { withFileTypes: true });
       return {
         entries: entries.map((e) => ({
@@ -46,41 +48,38 @@ export class FileSystemHandler implements ClientMethodHandler {
         })),
       };
     } catch (err) {
+      if (err instanceof PermissionDeniedError) {
+        throw permissionDenied(err.message, { path: dirPath });
+      }
       mapFsError(err, dirPath);
     }
   }
 
   private async readFile(filePath: string) {
-    const fullPath = this.resolvePath(filePath);
     try {
+      const fullPath = await this.boundary.resolveExisting(filePath);
       const content = await fs.readFile(fullPath, "utf-8");
       return { content };
     } catch (err) {
+      if (err instanceof PermissionDeniedError) {
+        throw permissionDenied(err.message, { path: filePath });
+      }
       mapFsError(err, filePath);
     }
   }
 
   private async writeFile(filePath: string, content: string) {
-    const fullPath = this.resolvePath(filePath);
     try {
+      const fullPath = await this.boundary.resolveWritable(filePath);
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, content, "utf-8");
       return {};
     } catch (err) {
+      if (err instanceof PermissionDeniedError) {
+        throw permissionDenied(err.message, { path: filePath });
+      }
       mapFsError(err, filePath);
     }
-  }
-
-  private resolvePath(filePath: string): string {
-    const resolved = path.resolve(this.baseDir, filePath);
-    const relative = path.relative(this.baseDir, resolved);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
-      throw permissionDenied(`Access denied: path ${filePath} is outside of base directory`, {
-        path: filePath,
-        baseDir: this.baseDir,
-      });
-    }
-    return resolved;
   }
 
   private requireObjectParams(method: string, params: unknown): Record<string, unknown> {

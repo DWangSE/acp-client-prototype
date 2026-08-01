@@ -178,6 +178,12 @@ export class AcpConnection implements AgentConnection {
     return { sessionId: resp.sessionId };
   }
 
+  async loadSession(sessionId: string, cwd: string): Promise<SessionRecord> {
+    if (!this.sdkConn) throw new TransportError("Not connected");
+    await this.sdkConn.loadSession({ sessionId, cwd, mcpServers: [] });
+    return { sessionId };
+  }
+
   async sendPrompt(sessionId: string, message: string): Promise<TurnController> {
     if (!this.sdkConn) throw new TransportError("Not connected");
 
