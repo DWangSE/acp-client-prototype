@@ -26,6 +26,8 @@ export interface AcpClientOptions {
   interceptors?: ClientInterceptors;
   verbose?: boolean;
   experimentalCapabilities?: Record<string, any>;
+  /** Workspace root used for FS boundary + eval FS jail. */
+  sandboxDir?: string;
 }
 
 export class AcpClient extends EventEmitter {
@@ -37,6 +39,7 @@ export class AcpClient extends EventEmitter {
   private interceptors?: ClientInterceptors;
   private verbose: boolean;
   private experimentalCapabilities?: Record<string, any>;
+  private sandboxDir?: string;
 
   private initialized = false;
   private authenticated = false;
@@ -56,6 +59,7 @@ export class AcpClient extends EventEmitter {
     this.interceptors = options.interceptors;
     this.verbose = options.verbose ?? false;
     this.experimentalCapabilities = options.experimentalCapabilities;
+    this.sandboxDir = options.sandboxDir;
 
     // Connect the router to the connection
     this.connection.setMethodRouter(this.methodRouter);
@@ -153,6 +157,8 @@ export class AcpClient extends EventEmitter {
     await this.connection.connect({
       ...spawnOptions,
       env,
+      cwd: this.sandboxDir,
+      jailRoot: this.sandboxDir,
       verbose: this.verbose,
     });
 

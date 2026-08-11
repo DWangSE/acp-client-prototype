@@ -7,6 +7,8 @@ export interface ConnectionOptions {
   args: string[];
   env?: Record<string, string | undefined>;
   cwd?: string;
+  /** When ACP_PROCESS_SANDBOX=1, the agent process is bubblewrap-jailed to this root. */
+  jailRoot?: string;
   verbose?: boolean;
 }
 

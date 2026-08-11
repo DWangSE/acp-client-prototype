@@ -2,6 +2,7 @@ import { ClientMethodHandler } from "./interface.js";
 import spawn from "cross-spawn";
 import type { ChildProcess } from "node:child_process";
 import { WorkspaceBoundary } from "../security/workspace-boundary.js";
+import { processSandboxEnabled, wrapSpawnForProcessSandbox } from "../security/eval-fs-jail.js";
 
 const TERMINAL_ENV_KEYS = [
   "PATH",
@@ -47,13 +48,30 @@ export class TerminalHandler implements ClientMethodHandler {
       case "terminal/create": {
         const id = `term_${this.nextId++}`;
         const cwd = await this.boundary.resolveExisting(params.cwd ?? ".");
-        // ACP spec: command is a string, often executed in a shell
-        const proc = spawn(params.command, [], {
-          shell: true,
-          cwd,
-          env: { ...createTerminalEnv(process.env), PWD: cwd },
-          stdio: "inherit", // For now, simple inherit. Real IDEs capture output.
-        });
+        const baseEnv = { ...createTerminalEnv(process.env), PWD: cwd };
+        // ACP spec: command is a string, often executed in a shell.
+        // Under eval FS jail, wrap the shell so `cat /abs/path` cannot escape the workspace.
+        const proc = processSandboxEnabled()
+          ? (() => {
+              const jailed = wrapSpawnForProcessSandbox({
+                command: String(params.command ?? ""),
+                jailRoot: this.boundary.root,
+                env: baseEnv,
+                shellCommand: true,
+              });
+              return spawn(jailed.command, jailed.args, {
+                shell: false,
+                cwd: jailed.cwd,
+                env: { ...baseEnv, ...jailed.env },
+                stdio: "inherit",
+              });
+            })()
+          : spawn(params.command, [], {
+              shell: true,
+              cwd,
+              env: baseEnv,
+              stdio: "inherit", // For now, simple inherit. Real IDEs capture output.
+            });
 
         this.terminals.set(id, proc);
 

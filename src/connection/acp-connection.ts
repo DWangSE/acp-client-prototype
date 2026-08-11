@@ -14,6 +14,11 @@ import {
 } from "./interface.js";
 import { AgentSpawnError, TransportError } from "../core/errors.js";
 import type { ClientCapabilities } from "../core/types.js";
+import {
+  processSandboxEnabled,
+  resolveProcessSandboxRoot,
+  wrapSpawnForProcessSandbox,
+} from "../security/eval-fs-jail.js";
 
 export class AcpConnection implements AgentConnection {
   readonly type = "acp";
@@ -34,9 +39,44 @@ export class AcpConnection implements AgentConnection {
 
   async connect(options: ConnectionOptions): Promise<void> {
     this.verbose = options.verbose ?? false;
-    this.process = spawn(options.command, options.args, {
-      env: { ...process.env, ...options.env },
-      cwd: options.cwd,
+    const mergedEnv = { ...process.env, ...options.env };
+    let command = options.command;
+    let args = options.args;
+    let cwd = options.cwd;
+    let env: Record<string, string | undefined> = mergedEnv;
+
+    if (processSandboxEnabled()) {
+      const jailRoot = resolveProcessSandboxRoot(options.jailRoot ?? options.cwd);
+      if (!jailRoot) {
+        throw new AgentSpawnError(
+          "ACP_PROCESS_SANDBOX=1 requires ConnectionOptions.jailRoot (or ACP_PROCESS_SANDBOX_ROOT)"
+        );
+      }
+      try {
+        const jailed = wrapSpawnForProcessSandbox({
+          command: options.command,
+          args: options.args,
+          cwd: options.cwd,
+          jailRoot,
+          env: mergedEnv,
+        });
+        command = jailed.command;
+        args = jailed.args;
+        cwd = jailed.cwd;
+        env = { ...mergedEnv, ...jailed.env };
+        if (this.verbose) {
+          console.error(`[ProcessSandbox] spawning agent under bwrap root=${jailRoot}`);
+        }
+      } catch (error) {
+        throw new AgentSpawnError(
+          `Failed to enable eval FS jail: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
+    this.process = spawn(command, args, {
+      env,
+      cwd,
       stdio: ["pipe", "pipe", "pipe"],
     });
 

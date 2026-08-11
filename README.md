@@ -274,6 +274,26 @@ The `.goose/` workspace folder is ignored by git to prevent secrets and diagnost
 
 ---
 
+## Process Sandbox
+
+ACP can enforce a generic bubblewrap boundary around the agent and terminal
+subprocesses. Policy remains caller-owned; ACP only executes it.
+
+| Variable                                     | Purpose                                                   |
+| -------------------------------------------- | --------------------------------------------------------- |
+| `ACP_PROCESS_SANDBOX=1`                      | Enable the process sandbox                                |
+| `ACP_PROCESS_SANDBOX_BWRAP`                  | Override the `bwrap` binary                               |
+| `ACP_PROCESS_SANDBOX_RO_PATHS_JSON`          | JSON array of workspace-relative paths to mount read-only |
+| `ACP_PROCESS_SANDBOX_EXTRA_RO_BINDS_JSON`    | JSON array of additional host paths to mount read-only    |
+| `ACP_PROCESS_SANDBOX_HIDE_PYTHON_PACKAGES=1` | Hide host third-party Python package directories          |
+| `ACP_DENY_NETWORK_TOOLS=1`                   | Reject common network tool permission requests            |
+| `ACP_DENY_PATH_SUBSTRINGS_JSON`              | JSON array of caller-defined path substrings to reject    |
+
+Benchmark-specific path names and scoring policy do not belong in ACP; callers
+translate their policy into these generic settings.
+
+---
+
 ## Troubleshooting
 
 - **Process Hangs**: Ensure you call `client.shutdown()` to clean up event loops and terminate child processes.

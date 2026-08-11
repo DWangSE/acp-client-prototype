@@ -114,6 +114,7 @@ export class AcpClientBuilder {
       interceptors: this.interceptors,
       verbose: this.verbose,
       experimentalCapabilities,
+      sandboxDir: this.sandboxDir,
     };
 
     return new AcpClient(options);

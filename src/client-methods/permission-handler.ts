@@ -3,11 +3,29 @@ import { select } from "@inquirer/prompts";
 
 const NETWORK_TOOL_RE = /\b(WebFetch|WebSearch|Browser|browser_navigate|browser_search)\b/i;
 const NETWORK_BASH_RE =
-  /\b(curl|wget|httpie|Invoke-WebRequest|iwr|Fetch)\b|\bgh\s+(api|pr|issue|browse|repo)\b|https?:\/\//i;
-
-function blockInternetEnabled(): boolean {
-  const raw = process.env.NEWIDE_SWE_EVO_BLOCK_INTERNET?.trim().toLowerCase();
+  /\b(curl|wget|httpie|Invoke-WebRequest|iwr|Fetch|ssh|scp|sftp|nc|ncat|netcat|telnet)\b|\bgh\s+(api|pr|issue|browse|repo)\b|\bgit\s+(clone|fetch|pull|push|ls-remote|submodule)\b|https?:\/\//i;
+function envFlagEnabled(name: string): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function deniedPathSubstrings(): string[] {
+  const raw = process.env.ACP_DENY_PATH_SUBSTRINGS_JSON?.trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error("expected a JSON array");
+    }
+    return parsed
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.toLowerCase())
+      .filter(Boolean);
+  } catch (error) {
+    throw new Error(
+      `Invalid ACP_DENY_PATH_SUBSTRINGS_JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
 }
 
 function toolLabel(params: any): string {
@@ -35,6 +53,14 @@ function isNetworkPermissionRequest(params: any): boolean {
   if (NETWORK_TOOL_RE.test(nested)) return true;
   if (/\b(Bash|Terminal|shell)\b/i.test(label) && NETWORK_BASH_RE.test(nested)) return true;
   return false;
+}
+
+function isFilesystemLeakPermissionRequest(params: any): boolean {
+  const denied = deniedPathSubstrings();
+  if (denied.length === 0) return false;
+  const content =
+    `${toolLabel(params)}\n${JSON.stringify(params?.toolCall ?? params ?? {})}`.toLowerCase();
+  return denied.some((substring) => content.includes(substring));
 }
 
 function denyOutcome(options: any[]): any {
@@ -65,9 +91,18 @@ export class PermissionHandler implements ClientMethodHandler {
       const message = params.message || params.toolCall?.description || "";
       const options = params.options || [];
 
-      if (blockInternetEnabled() && isNetworkPermissionRequest(params)) {
+      if (envFlagEnabled("ACP_DENY_NETWORK_TOOLS") && isNetworkPermissionRequest(params)) {
         console.error(
-          `[Permission Denied][NEWIDE_SWE_EVO_BLOCK_INTERNET] ${title}${
+          `[Permission Denied][ACP_DENY_NETWORK_TOOLS] ${title}${
+            message ? `: ${String(message).slice(0, 200)}` : ""
+          }`
+        );
+        return denyOutcome(options);
+      }
+
+      if (isFilesystemLeakPermissionRequest(params)) {
+        console.error(
+          `[Permission Denied][ACP_DENY_PATH_SUBSTRINGS_JSON] ${title}${
             message ? `: ${String(message).slice(0, 200)}` : ""
           }`
         );
