@@ -160,6 +160,15 @@ function resolveJailHomeDir(jailRoot: string): string {
   return ensureDir(join(tmpdir(), "acp-process-sandbox-homes", digest));
 }
 
+/**
+ * Native Claude (and getpwuid) ignore $HOME and read /etc/passwd, which maps
+ * uid 0 to /root. An empty tmpfs on /root hides eval Claude settings even
+ * when ACP_PROCESS_SANDBOX_HOME is set. Bind the jail home over /root and
+ * force HOME/CLAUDE_CONFIG_DIR there.
+ */
+const JAIL_PASSWD_HOME = "/root";
+const JAIL_CLAUDE_CONFIG_DIR = "/root/.claude";
+
 function parseExtraRoBinds(): string[] {
   const raw = process.env.ACP_PROCESS_SANDBOX_EXTRA_RO_BINDS_JSON?.trim();
   if (!raw) return [];
@@ -227,8 +236,6 @@ export function buildProcessSandboxArgs(jailRoot: string): string[] {
     "/var/tmp",
     "--tmpfs",
     "/home",
-    "--tmpfs",
-    "/root",
   ];
 
   pushRoBind(args, "/usr");
@@ -260,15 +267,19 @@ export function buildProcessSandboxArgs(jailRoot: string): string[] {
 
   const npmCache = resolveNpmCacheDir();
   const jailHome = resolveJailHomeDir(root);
+  ensureDir(join(jailHome, ".claude"));
   pushBind(args, npmCache);
   pushBind(args, jailHome, jailHome);
+  // Overlay passwd home so native Claude sees eval settings, not an empty tmpfs.
+  pushBind(args, jailHome, JAIL_PASSWD_HOME);
   // Keep the workspace at the same absolute path so session cwd / prompts stay valid.
   args.push("--bind", root, root);
   for (const immutablePath of parseImmutableWorkspacePaths(root)) {
     pushRoBind(args, immutablePath);
   }
 
-  args.push("--setenv", "HOME", jailHome);
+  args.push("--setenv", "HOME", JAIL_PASSWD_HOME);
+  args.push("--setenv", "CLAUDE_CONFIG_DIR", JAIL_CLAUDE_CONFIG_DIR);
   args.push("--setenv", "TMPDIR", "/tmp");
   args.push("--setenv", "TMP", "/tmp");
   args.push("--setenv", "TEMP", "/tmp");
@@ -291,6 +302,7 @@ export function wrapSpawnForProcessSandbox(
 
   const baseEnv = { ...(input.env ?? {}) };
   baseEnv.HOME = undefined; // forced by bwrap --setenv
+  baseEnv.CLAUDE_CONFIG_DIR = undefined;
   baseEnv.npm_config_cache = undefined;
   baseEnv.ACP_PROCESS_SANDBOX_ACTIVE = "1";
 

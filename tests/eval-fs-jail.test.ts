@@ -112,3 +112,57 @@ test("buildProcessSandboxArgs binds only the configured workspace", () => {
   assert.ok(!args.includes(sibling));
   assert.ok(!args.includes(outsideCache));
 });
+
+test("process sandbox overlays jail home on /root for passwd-based Claude config", async () => {
+  const previousHome = process.env.ACP_PROCESS_SANDBOX_HOME;
+  const jailHome = path.join(root, "eval-claude-home");
+  process.env.ACP_PROCESS_SANDBOX_HOME = jailHome;
+  try {
+    await fs.mkdir(path.join(jailHome, ".claude"), { recursive: true });
+    await fs.writeFile(path.join(jailHome, ".claude", "settings.json"), "jail-settings\n");
+    const args = buildProcessSandboxArgs(workspace);
+    const homeIdx = args.indexOf("HOME");
+    assert.notEqual(homeIdx, -1);
+    assert.equal(args[homeIdx - 1], "--setenv");
+    assert.equal(args[homeIdx + 1], "/root");
+    const configIdx = args.indexOf("CLAUDE_CONFIG_DIR");
+    assert.notEqual(configIdx, -1);
+    assert.equal(args[configIdx + 1], "/root/.claude");
+    for (let i = 0; i < args.length; i += 1) {
+      if (args[i] === "--tmpfs") assert.notEqual(args[i + 1], "/root");
+    }
+    const rootBind = args.findIndex(
+      (value, index) => value === "--bind" && args[index + 2] === "/root"
+    );
+    assert.notEqual(rootBind, -1);
+    assert.equal(args[rootBind + 1], jailHome);
+
+    const jailed = wrapSpawnForProcessSandbox({
+      command: process.execPath,
+      args: [
+        "-e",
+        `
+const fs = require("fs");
+const assert = require("assert");
+assert.equal(process.env.HOME, "/root");
+assert.equal(process.env.CLAUDE_CONFIG_DIR, "/root/.claude");
+assert.equal(fs.readFileSync("/root/.claude/settings.json", "utf8").trim(), "jail-settings");
+// bwrap runs without --clearenv, so provider env must be inherited.
+assert.equal(process.env.ANTHROPIC_MODEL, "deepseek-v4-flash");
+console.log("root-home-ok");
+`,
+      ],
+      jailRoot: workspace,
+      env: { ANTHROPIC_MODEL: "deepseek-v4-flash" },
+    });
+    const result = spawnSync(jailed.command, jailed.args, {
+      encoding: "utf8",
+      env: { ...process.env, ...jailed.env },
+    });
+    assert.equal(result.status, 0, `stderr=${result.stderr}\nstdout=${result.stdout}`);
+    assert.match(result.stdout, /root-home-ok/);
+  } finally {
+    if (previousHome === undefined) delete process.env.ACP_PROCESS_SANDBOX_HOME;
+    else process.env.ACP_PROCESS_SANDBOX_HOME = previousHome;
+  }
+});
