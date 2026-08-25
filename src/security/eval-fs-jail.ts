@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { writeOfflineDnsFiles } from "./package-index-block.js";
 
 export interface ProcessSandboxSpawnSpec {
   command: string;
@@ -71,19 +72,67 @@ function pushTmpfs(args: string[], guestPath: string): void {
   args.push("--tmpfs", guestPath);
 }
 
+/**
+ * Debian/Ubuntu usr-merge makes /lib -> usr/lib (and /bin -> usr/bin).
+ * `--ro-bind /lib /lib` follows the symlink and creates a *second* mount of
+ * the same tree, so a later `--tmpfs /usr/lib/python3/dist-packages` does not
+ * hide `/lib/python3/dist-packages`. Recreate the host symlink inside the jail
+ * instead of bind-mounting the target twice.
+ */
+function usrMergeSymlinkTarget(guestPath: string): string | undefined {
+  try {
+    if (!lstatSync(guestPath).isSymbolicLink()) return undefined;
+  } catch {
+    return undefined;
+  }
+  const target = readlinkSync(guestPath);
+  const normalized = target.replace(/\/+$/, "");
+  const allowed = new Set([
+    "usr/bin",
+    "usr/sbin",
+    "usr/lib",
+    "usr/lib64",
+    "/usr/bin",
+    "/usr/sbin",
+    "/usr/lib",
+    "/usr/lib64",
+  ]);
+  return allowed.has(normalized) ? target : undefined;
+}
+
+function pushUsrMergeOrRoBind(args: string[], guestPath: string): void {
+  if (!existsSync(guestPath)) return;
+  const symlinkTarget = usrMergeSymlinkTarget(guestPath);
+  if (symlinkTarget) {
+    args.push("--symlink", symlinkTarget, guestPath);
+    return;
+  }
+  pushRoBind(args, guestPath);
+}
+
+function collectPythonPackageDirsUnder(root: string, dirs: string[]): void {
+  if (!existsSync(root)) return;
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.name.startsWith("python")) continue;
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    for (const leaf of ["dist-packages", "site-packages"]) {
+      const candidate = join(root, entry.name, leaf);
+      if (existsSync(candidate)) dirs.push(candidate);
+    }
+  }
+}
+
 function listPythonPackageDirs(): string[] {
   const dirs: string[] = [];
-  const roots = ["/usr/lib", "/usr/local/lib"];
-  for (const root of roots) {
-    if (!existsSync(root)) continue;
-    for (const entry of readdirSync(root, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      if (!entry.name.startsWith("python")) continue;
-      for (const leaf of ["dist-packages", "site-packages"]) {
-        const candidate = join(root, entry.name, leaf);
-        if (existsSync(candidate)) dirs.push(candidate);
-      }
-    }
+  // Include usr-merge aliases (/lib vs /usr/lib) as distinct guest paths.
+  for (const root of ["/usr/lib", "/usr/lib64", "/usr/local/lib", "/lib", "/lib64"]) {
+    collectPythonPackageDirsUnder(root, dirs);
   }
   // Common non-/usr install prefixes that may still be reachable via binds.
   for (const candidate of [
@@ -94,6 +143,34 @@ function listPythonPackageDirs(): string[] {
   ]) {
     if (existsSync(candidate)) dirs.push(candidate);
   }
+  return [...new Set(dirs)];
+}
+
+function parseHidePaths(): string[] {
+  const raw = process.env.ACP_PROCESS_SANDBOX_HIDE_PATHS_JSON?.trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error("expected a JSON array");
+    return parsed.filter((part): part is string => typeof part === "string" && part.length > 0);
+  } catch (error) {
+    throw new Error(
+      `Invalid ACP_PROCESS_SANDBOX_HIDE_PATHS_JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+/** Host trees that can serve as an unofficial gold-source for SWE-EVO repos. */
+const DEFAULT_ORACLE_TREES = ["/usr/local/aegis", "/opt/aegis"];
+
+export function listHostOracleHideDirs(): string[] {
+  const dirs = [
+    ...listPythonPackageDirs(),
+    ...DEFAULT_ORACLE_TREES.filter((dir) => existsSync(dir)),
+    ...parseHidePaths().filter((dir) => existsSync(dir)),
+  ];
   return [...new Set(dirs)];
 }
 
@@ -215,6 +292,13 @@ function parseImmutableWorkspacePaths(root: string): string[] {
  *
  * Paths outside the workspace are not mounted unless the caller explicitly
  * provides a read-only bind.
+ *
+ * Network namespaces stay shared (`--share-net`) so the model API can reach
+ * ANTHROPIC_BASE_URL. When ACP_DENY_NETWORK_TOOLS=1, DNS is default-deny
+ * (`hosts: files` + stub resolv.conf): only pre-resolved API allowlist hosts
+ * work. HOME is an ephemeral tmpfs so wheels cannot persist across instances.
+ * pip is forced offline (`PIP_NO_INDEX`). Memory, embeddings, and Postgres stay
+ * in the backend process outside this jail.
  */
 export function buildProcessSandboxArgs(jailRoot: string): string[] {
   const root = resolve(jailRoot);
@@ -222,6 +306,7 @@ export function buildProcessSandboxArgs(jailRoot: string): string[] {
     throw new Error(`Eval FS jail root does not exist: ${root}`);
   }
 
+  const denyNetwork = envFlagEnabled("ACP_DENY_NETWORK_TOOLS");
   const args: string[] = [
     "--unshare-all",
     "--share-net",
@@ -239,10 +324,11 @@ export function buildProcessSandboxArgs(jailRoot: string): string[] {
   ];
 
   pushRoBind(args, "/usr");
-  pushRoBind(args, "/lib");
-  pushRoBind(args, "/lib64");
-  pushRoBind(args, "/bin");
-  pushRoBind(args, "/sbin");
+  // usr-merge: recreate /lib -> usr/lib (etc.) instead of a second bind of /usr/lib.
+  pushUsrMergeOrRoBind(args, "/lib");
+  pushUsrMergeOrRoBind(args, "/lib64");
+  pushUsrMergeOrRoBind(args, "/bin");
+  pushUsrMergeOrRoBind(args, "/sbin");
   pushRoBind(args, "/etc/ssl");
   pushRoBind(args, "/etc/passwd");
   pushRoBind(args, "/etc/group");
@@ -251,8 +337,17 @@ export function buildProcessSandboxArgs(jailRoot: string): string[] {
   }
 
   if (envFlagEnabled("ACP_PROCESS_SANDBOX_HIDE_PYTHON_PACKAGES")) {
-    for (const pkgDir of listPythonPackageDirs()) {
-      pushTmpfs(args, pkgDir);
+    const seenReal = new Set<string>();
+    for (const pkgDir of listHostOracleHideDirs()) {
+      let guest = pkgDir;
+      try {
+        guest = realpathSync(pkgDir);
+      } catch {
+        // Hide the lexical path even if realpath fails.
+      }
+      if (seenReal.has(guest)) continue;
+      seenReal.add(guest);
+      pushTmpfs(args, guest);
     }
   }
 
@@ -265,13 +360,25 @@ export function buildProcessSandboxArgs(jailRoot: string): string[] {
     pushRoBind(args, extra);
   }
 
-  const npmCache = resolveNpmCacheDir();
   const jailHome = resolveJailHomeDir(root);
   ensureDir(join(jailHome, ".claude"));
-  pushBind(args, npmCache);
-  pushBind(args, jailHome, jailHome);
-  // Overlay passwd home so native Claude sees eval settings, not an empty tmpfs.
-  pushBind(args, jailHome, JAIL_PASSWD_HOME);
+  const npmCacheGuest = denyNetwork ? "/tmp/npm-cache" : resolveNpmCacheDir();
+  if (denyNetwork) {
+    // Empty HOME for the process lifetime. Do not bind the host eval Claude
+    // home — a shared $HOME is how wheels leaked across instances.
+    pushTmpfs(args, JAIL_PASSWD_HOME);
+    args.push("--dir", JAIL_CLAUDE_CONFIG_DIR);
+    const settings = join(jailHome, ".claude", "settings.json");
+    if (existsSync(settings)) {
+      args.push("--ro-bind", settings, join(JAIL_CLAUDE_CONFIG_DIR, "settings.json"));
+    }
+    args.push("--dir", npmCacheGuest);
+  } else {
+    pushBind(args, npmCacheGuest);
+    pushBind(args, jailHome, jailHome);
+    // Overlay passwd home so native Claude sees eval settings, not an empty tmpfs.
+    pushBind(args, jailHome, JAIL_PASSWD_HOME);
+  }
   // Keep the workspace at the same absolute path so session cwd / prompts stay valid.
   args.push("--bind", root, root);
   for (const immutablePath of parseImmutableWorkspacePaths(root)) {
@@ -283,14 +390,26 @@ export function buildProcessSandboxArgs(jailRoot: string): string[] {
   args.push("--setenv", "TMPDIR", "/tmp");
   args.push("--setenv", "TMP", "/tmp");
   args.push("--setenv", "TEMP", "/tmp");
-  args.push("--setenv", "npm_config_cache", npmCache);
+  args.push("--setenv", "npm_config_cache", npmCacheGuest);
   args.push("--setenv", "PATH", nodeMounts.pathPrefix);
   args.push("--setenv", "ACP_PROCESS_SANDBOX_ACTIVE", "1");
   // Avoid leaking the real host home into tools that expand ~ before jail checks.
   args.push("--unsetenv", "USERPROFILE");
   args.push("--chdir", root);
+  applyOfflineNetworkBlock(args);
 
   return args;
+}
+
+function applyOfflineNetworkBlock(args: string[]): void {
+  if (!envFlagEnabled("ACP_DENY_NETWORK_TOOLS")) return;
+  const dns = writeOfflineDnsFiles();
+  args.push("--ro-bind", dns.hosts, "/etc/hosts");
+  args.push("--ro-bind", dns.resolv, "/etc/resolv.conf");
+  args.push("--ro-bind", dns.nsswitch, "/etc/nsswitch.conf");
+  args.push("--setenv", "PIP_NO_INDEX", "1");
+  args.push("--setenv", "PIP_DISABLE_PIP_VERSION_CHECK", "1");
+  args.push("--setenv", "UV_NO_INDEX", "1");
 }
 
 export function wrapSpawnForProcessSandbox(

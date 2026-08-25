@@ -1,9 +1,12 @@
 import { ClientMethodHandler } from "./interface.js";
 import { select } from "@inquirer/prompts";
+import { PACKAGE_INDEX_FETCH_RE, SCRIPT_NETWORK_RE } from "../security/package-index-block.js";
 
 const NETWORK_TOOL_RE = /\b(WebFetch|WebSearch|Browser|browser_navigate|browser_search)\b/i;
 const NETWORK_BASH_RE =
   /\b(curl|wget|httpie|Invoke-WebRequest|iwr|Fetch|ssh|scp|sftp|nc|ncat|netcat|telnet)\b|\bgh\s+(api|pr|issue|browse|repo)\b|\bgit\s+(clone|fetch|pull|push|ls-remote|submodule)\b|https?:\/\//i;
+const SHELL_TOOL_RE = /\b(Bash|Terminal|shell)\b/i;
+
 function envFlagEnabled(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
@@ -42,25 +45,26 @@ function toolLabel(params: any): string {
     .join("\n");
 }
 
-function isNetworkPermissionRequest(params: any): boolean {
-  const label = toolLabel(params);
-  if (NETWORK_TOOL_RE.test(label)) return true;
-  if (/\bBash\b|\bTerminal\b|\bshell\b/i.test(label) && NETWORK_BASH_RE.test(label)) {
-    return true;
-  }
-  // Some agents put the command only in nested rawInput / command fields.
-  const nested = JSON.stringify(params?.toolCall ?? params ?? {});
-  if (NETWORK_TOOL_RE.test(nested)) return true;
-  if (/\b(Bash|Terminal|shell)\b/i.test(label) && NETWORK_BASH_RE.test(nested)) return true;
-  return false;
-}
-
-function isFilesystemLeakPermissionRequest(params: any): boolean {
+export function isFilesystemLeakPermissionRequest(params: any): boolean {
   const denied = deniedPathSubstrings();
   if (denied.length === 0) return false;
   const content =
     `${toolLabel(params)}\n${JSON.stringify(params?.toolCall ?? params ?? {})}`.toLowerCase();
   return denied.some((substring) => content.includes(substring));
+}
+
+export function isNetworkPermissionRequest(params: any): boolean {
+  const label = toolLabel(params);
+  const nested = JSON.stringify(params?.toolCall ?? params ?? {});
+  // Search nested JSON too: Claude often puts `toolName: Bash` only in `_meta`.
+  const haystack = `${label}\n${nested}`;
+  if (NETWORK_TOOL_RE.test(haystack)) return true;
+  if (!SHELL_TOOL_RE.test(haystack)) return false;
+  return (
+    NETWORK_BASH_RE.test(haystack) ||
+    PACKAGE_INDEX_FETCH_RE.test(haystack) ||
+    SCRIPT_NETWORK_RE.test(haystack)
+  );
 }
 
 function denyOutcome(options: any[]): any {

@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
+import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -7,6 +8,7 @@ import { after, before, test } from "node:test";
 import {
   assertProcessSandboxAvailable,
   buildProcessSandboxArgs,
+  listHostOracleHideDirs,
   processSandboxEnabled,
   resolveBwrapPath,
   wrapSpawnForProcessSandbox,
@@ -164,5 +166,159 @@ console.log("root-home-ok");
   } finally {
     if (previousHome === undefined) delete process.env.ACP_PROCESS_SANDBOX_HOME;
     else process.env.ACP_PROCESS_SANDBOX_HOME = previousHome;
+  }
+});
+
+test("offline eval jail uses default-deny DNS and ephemeral HOME", async () => {
+  const previousDeny = process.env.ACP_DENY_NETWORK_TOOLS;
+  const previousHome = process.env.ACP_PROCESS_SANDBOX_HOME;
+  const previousApi = process.env.ANTHROPIC_BASE_URL;
+  const jailHome = path.join(root, "eval-claude-home-offline");
+  process.env.ACP_DENY_NETWORK_TOOLS = "1";
+  process.env.ACP_PROCESS_SANDBOX_HOME = jailHome;
+  process.env.ANTHROPIC_BASE_URL = "https://127.0.0.1/v1";
+  try {
+    await fs.mkdir(path.join(jailHome, ".claude"), { recursive: true });
+    await fs.writeFile(path.join(jailHome, ".claude", "settings.json"), "jail-settings\n");
+    const args = buildProcessSandboxArgs(workspace);
+    assert.equal(args.includes("--share-net"), true);
+    const pipIdx = args.indexOf("PIP_NO_INDEX");
+    assert.notEqual(pipIdx, -1);
+    assert.equal(args[pipIdx + 1], "1");
+    assert.ok(args.includes("/etc/nsswitch.conf"));
+    assert.equal(args.includes(jailHome), false);
+
+    const jailed = wrapSpawnForProcessSandbox({
+      command: "/usr/bin/python3",
+      args: [
+        "-c",
+        `
+import os, socket, pathlib
+assert os.environ.get("PIP_NO_INDEX") == "1"
+assert os.environ.get("HOME") == "/root"
+assert pathlib.Path("/root/.claude/settings.json").read_text().strip() == "jail-settings"
+pathlib.Path("/root/stolen.whl").write_text("gold")
+for host in ("pypi.org", "files.pythonhosted.org", "github.com", "mirrors.aliyun.com", "huggingface.co"):
+    failed = False
+    try:
+        socket.getaddrinfo(host, 443)
+    except socket.gaierror:
+        failed = True
+    assert failed, host
+socket.getaddrinfo("localhost", 80)
+print("offline-index-ok")
+`,
+      ],
+      jailRoot: workspace,
+      env: {},
+    });
+    const result = spawnSync(jailed.command, jailed.args, {
+      encoding: "utf8",
+      env: { ...process.env, ...jailed.env },
+    });
+    assert.equal(result.status, 0, `stderr=${result.stderr}\nstdout=${result.stdout}`);
+    assert.match(result.stdout, /offline-index-ok/);
+    assert.equal(
+      await fs.access(path.join(jailHome, "stolen.whl")).then(
+        () => true,
+        () => false
+      ),
+      false
+    );
+  } finally {
+    if (previousDeny === undefined) delete process.env.ACP_DENY_NETWORK_TOOLS;
+    else process.env.ACP_DENY_NETWORK_TOOLS = previousDeny;
+    if (previousHome === undefined) delete process.env.ACP_PROCESS_SANDBOX_HOME;
+    else process.env.ACP_PROCESS_SANDBOX_HOME = previousHome;
+    if (previousApi === undefined) delete process.env.ANTHROPIC_BASE_URL;
+    else process.env.ANTHROPIC_BASE_URL = previousApi;
+  }
+});
+
+test("usr-merge /lib is a symlink mount, not a second bind of /usr/lib", () => {
+  if (!existsSync("/lib") || !lstatSync("/lib").isSymbolicLink()) return;
+  const target = readlinkSync("/lib");
+  const args = buildProcessSandboxArgs(workspace);
+  const symlinkIdx = args.findIndex(
+    (value, index) =>
+      value === "--symlink" && args[index + 1] === target && args[index + 2] === "/lib"
+  );
+  assert.notEqual(symlinkIdx, -1, `expected --symlink ${target} /lib in ${args.join(" ")}`);
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === "--ro-bind" || args[i] === "--ro-bind-try") {
+      assert.notEqual(args[i + 2], "/lib", "must not bind /lib as a second copy of /usr/lib");
+    }
+  }
+});
+
+test("hiding host packages covers /lib dist-packages alias and aegis oracle tree", () => {
+  const previousHide = process.env.ACP_PROCESS_SANDBOX_HIDE_PYTHON_PACKAGES;
+  const previousDeny = process.env.ACP_DENY_NETWORK_TOOLS;
+  const previousApi = process.env.ANTHROPIC_BASE_URL;
+  process.env.ACP_PROCESS_SANDBOX_HIDE_PYTHON_PACKAGES = "1";
+  process.env.ACP_DENY_NETWORK_TOOLS = "1";
+  process.env.ANTHROPIC_BASE_URL = "https://127.0.0.1/v1";
+  try {
+    const hidden = listHostOracleHideDirs();
+    if (existsSync("/lib/python3/dist-packages")) {
+      assert.ok(hidden.includes("/lib/python3/dist-packages"));
+    }
+    if (existsSync("/usr/lib/python3/dist-packages")) {
+      assert.ok(hidden.includes("/usr/lib/python3/dist-packages"));
+    }
+    if (existsSync("/usr/local/aegis")) {
+      assert.ok(hidden.includes("/usr/local/aegis"));
+    }
+
+    const args = buildProcessSandboxArgs(workspace);
+    for (const dir of hidden) {
+      let guest = dir;
+      try {
+        guest = realpathSync(dir);
+      } catch {
+        // keep lexical path
+      }
+      const tmpfsIdx = args.findIndex(
+        (value, index) =>
+          value === "--tmpfs" && (args[index + 1] === dir || args[index + 1] === guest)
+      );
+      assert.notEqual(tmpfsIdx, -1, `expected --tmpfs covering ${dir}`);
+    }
+
+    const probePaths = [
+      "/lib/python3/dist-packages/requests/__init__.py",
+      "/usr/lib/python3/dist-packages/requests/__init__.py",
+      "/usr/local/aegis/PythonLoader/third_party/requests/__init__.py",
+    ].filter((p) => existsSync(p));
+    assert.ok(probePaths.length > 0, "host oracle files must exist for this assertion");
+
+    const jailed = wrapSpawnForProcessSandbox({
+      command: "/usr/bin/python3",
+      args: [
+        "-c",
+        `
+import os, sys
+assert sys.version
+for p in ${JSON.stringify(probePaths)}:
+    assert not os.path.exists(p), p
+print("oracle-hidden-ok")
+`,
+      ],
+      jailRoot: workspace,
+      env: {},
+    });
+    const result = spawnSync(jailed.command, jailed.args, {
+      encoding: "utf8",
+      env: { ...process.env, ...jailed.env },
+    });
+    assert.equal(result.status, 0, `stderr=${result.stderr}\nstdout=${result.stdout}`);
+    assert.match(result.stdout, /oracle-hidden-ok/);
+  } finally {
+    if (previousHide === undefined) delete process.env.ACP_PROCESS_SANDBOX_HIDE_PYTHON_PACKAGES;
+    else process.env.ACP_PROCESS_SANDBOX_HIDE_PYTHON_PACKAGES = previousHide;
+    if (previousDeny === undefined) delete process.env.ACP_DENY_NETWORK_TOOLS;
+    else process.env.ACP_DENY_NETWORK_TOOLS = previousDeny;
+    if (previousApi === undefined) delete process.env.ANTHROPIC_BASE_URL;
+    else process.env.ANTHROPIC_BASE_URL = previousApi;
   }
 });
